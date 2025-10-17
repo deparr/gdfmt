@@ -13,7 +13,7 @@ pub const Token = struct {
         .{ "as", .as },
         .{ "and", .@"and" },
         .{ "assert", .assert },
-        .{ "await", .@"await" },
+        .{ "await", .await },
         .{ "break", .@"break" },
         .{ "breakpoint", .breakpoint },
         .{ "class", .class },
@@ -45,10 +45,13 @@ pub const Token = struct {
         .{ "void", .void },
         .{ "while", .@"while" },
         .{ "yield", .yield },
-        .{ "inf", .inf },
-        .{ "nan", .nan },
-        .{ "pi", .pi },
-        .{ "tau", .tau },
+        .{ "INF", .inf },
+        .{ "NaN", .nan },
+        .{ "PI", .pi },
+        .{ "TAU", .tau },
+        .{ "null", .null },
+        .{ "true", .true },
+        .{ "false", .false },
     });
 
     pub fn getKeyword(bytes: []const u8) ?Tag {
@@ -119,7 +122,7 @@ pub const Token = struct {
 
         as,
         assert,
-        @"await",
+        await,
         breakpoint,
         class,
         class_name,
@@ -164,6 +167,9 @@ pub const Token = struct {
         tau,
         inf,
         nan,
+        null,
+        true,
+        false,
         vcs_conflict_marker,
         backtick,
         question_mark,
@@ -242,7 +248,7 @@ pub const Token = struct {
 
                 .as => "as",
                 .assert => "assert",
-                .@"await" => "await",
+                .await => "await",
                 .breakpoint => "breakpoint",
                 .class => "class",
                 .class_name => "class_name",
@@ -283,6 +289,9 @@ pub const Token = struct {
                 .tau => "TAU",
                 .inf => "INF",
                 .nan => "NaN",
+                .null => "null",
+                .true => "true",
+                .false => "false",
 
                 .backtick => "`",
                 .question_mark => "?",
@@ -309,354 +318,47 @@ pub const Token = struct {
 };
 
 pub const Tokenizer = struct {
+    // [TODO] might need an allocator
     source: [:0]u8,
     index: usize = 0,
-
-    const State = enum {
-        start,
-        percent,
-        star,
-        star_star,
-        plus,
-        minus,
-        equal,
-        bang,
-        less,
-        less_less,
-        greater,
-        greater_greater,
-        caret,
-        ampersand,
-        pipe,
-        period,
-        period_period,
-        identifier,
-        number,
-        string_literal,
-        expect_newline,
-    };
+    sent_eof: bool = false,
+    pending_newline: bool = false,
+    pending_indents: u32 = 0,
 
     pub fn next(self: *Tokenizer) Token {
-        var result: Token = .{
-            .tag = undefined,
-            .loc = .{
-                .start = self.index,
-                .end = undefined,
-            },
-        };
-        // std.debug.print("bout to start on {d} {x:02}\n", .{ self.source[self.index], self.source[self.index] });
-        state: switch (State.start) {
-            .start => switch (self.source[self.index]) {
-                0 => {
-                    if (self.index == self.source.len) {
-                        return .{
-                            .tag = .eof,
-                            .loc = .{
-                                .start = self.index,
-                                .end = self.index,
-                            },
-                        };
-                    }
+        // self.skip_whitespace();
+
+        if (self.is_at_end()) {
+            return .{
+                .tag = .eof,
+                .loc = .{
+                    .start = self.index,
+                    .end = self.index,
                 },
-                '\r' => {
-                    self.index += 1;
-                    continue :state .expect_newline;
-                },
-                '\n' => {
-                    self.index += 1;
-                    result.tag = .newline;
-                },
-                ' ', '\t' => {
-                    self.index += 1;
-                    result.loc.start = self.index;
-                    continue :state .start;
-                },
-                ',' => {
-                    result.tag = .comma;
-                    self.index += 1;
-                },
-                '~' => {
-                    result.tag = .tilde;
-                    self.index += 1;
-                },
-                ':' => {
-                    result.tag = .colon;
-                    self.index += 1;
-                },
-                ';' => {
-                    result.tag = .semicolon;
-                    self.index += 1;
-                },
-                '$' => {
-                    result.tag = .dollar;
-                    self.index += 1;
-                },
-                '?' => {
-                    result.tag = .question_mark;
-                    self.index += 1;
-                },
-                '`' => {
-                    result.tag = .backtick;
-                    self.index += 1;
-                },
-                '(' => {
-                    result.tag = .paren_open;
-                    self.index += 1;
-                },
-                ')' => {
-                    result.tag = .paren_close;
-                    self.index += 1;
-                },
-                '[' => {
-                    result.tag = .bracket_open;
-                    self.index += 1;
-                },
-                ']' => {
-                    result.tag = .bracket_close;
-                    self.index += 1;
-                },
-                '{' => {
-                    result.tag = .brace_open;
-                    self.index += 1;
-                },
-                '}' => {
-                    result.tag = .brace_close;
-                    self.index += 1;
-                },
-                '%' => continue :state .percent,
-                '*' => continue :state .star,
-                '+' => continue :state .plus,
-                '-' => continue :state .minus,
-                '=' => continue :state .equal,
-                '!' => continue :state .bang,
-                '<' => continue :state .less,
-                '>' => continue :state .greater,
-                '^' => continue :state .caret,
-                '&' => continue :state .ampersand,
-                '|' => continue :state .pipe,
-                '.' => continue :state .period,
-                '@' => {
-                    result.tag = .annotation;
-                    continue :state .identifier;
-                },
-                'a' ... 'z', 'A'...'Z', '_' => {
-                    result.tag = .identifier;
-                    continue :state .identifier;
-                },
-                '\'', '"' => {
-                    result.tag = .string_literal;
-                    continue :state .string_literal;
-                },
-                else => {
-                    result.tag = .empty;
-                    self.index += 1;
-                },
-            },
-            .expect_newline => {
-                self.index += 1;
-                switch (self.source[self.index]) {
-                    0 => { std.debug.print("got 0 in expect_newline", .{}); },
-                    '\n' => {
-                        self.index += 1;
-                        result.tag = .newline;
-                    },
-                    else => { std.debug.print("got unexpect in expect_newline", .{}); },
-                }
-            },
-            .percent => {
-                self.index += 1;
-                switch (self.source[self.index]) {
-                    '=' => {
-                        self.index += 1;
-                        result.tag = .percent_equal;
-                    },
-                    else => result.tag = .percent,
-                }
-            },
-            .star => {
-                self.index += 1;
-                switch (self.source[self.index]) {
-                    '=' => {
-                        self.index += 1;
-                        result.tag = .star_equal;
-                    },
-                    '*' => continue :state .star_star,
-                    else => result.tag = .star,
-                }
-            },
-            .star_star => {
-                self.index += 1;
-                switch (self.source[self.index]) {
-                    '=' => {
-                        self.index += 1;
-                        result.tag = .star_star_equal;
-                    },
-                    else => result.tag = .star_star,
-                }
-            },
-            .plus => {
-                self.index += 1;
-                switch (self.source[self.index]) {
-                    '=' => {
-                        self.index += 1;
-                        result.tag = .plus_equal;
-                    },
-                    else => result.tag = .plus,
-                }
-            },
-            .minus => {
-                self.index += 1;
-                switch (self.source[self.index]) {
-                    '=' => {
-                        self.index += 1;
-                        result.tag = .minus_equal;
-                    },
-                    '>' => {
-                        self.index += 1;
-                        result.tag = .forward_arrow;
-                    },
-                    else => result.tag = .minus,
-                }
-            },
-            .equal => {
-                self.index += 1;
-                switch (self.source[self.index]) {
-                    '=' => {
-                        self.index += 1;
-                        result.tag = .equal_equal;
-                    },
-                    else => result.tag = .equal,
-                }
-            },
-            .bang => {
-                self.index += 1;
-                switch (self.source[self.index]) {
-                    '=' => {
-                        self.index += 1;
-                        result.tag = .bang_equal;
-                    },
-                    else => result.tag = .bang,
-                }
-            },
-            .less => {
-                self.index += 1;
-                switch (self.source[self.index]) {
-                    '=' => {
-                        self.index += 1;
-                        result.tag = .less_equal;
-                    },
-                    '<' => continue :state .less_less,
-                    else => result.tag = .less,
-                }
-            },
-            .less_less => {
-                self.index += 1;
-                switch (self.source[self.index]) {
-                    '=' => {
-                        self.index += 1;
-                        result.tag = .less_less_equal;
-                    },
-                    else => result.tag = .less_less,
-                }
-            },
-            .greater => {
-                self.index += 1;
-                switch (self.source[self.index]) {
-                    '=' => {
-                        self.index += 1;
-                        result.tag = .greater_equal;
-                    },
-                    '>' => continue :state .greater_greater,
-                    else => result.tag = .greater,
-                }
-            },
-            .greater_greater => {
-                self.index += 1;
-                switch (self.source[self.index]) {
-                    '=' => {
-                        self.index += 1;
-                        result.tag = .greater_greater_equal;
-                    },
-                    else => result.tag = .greater_greater,
-                }
-            },
-            .caret => {
-                self.index += 1;
-                switch (self.source[self.index]) {
-                    '\'', '"' => continue :state .string_literal,
-                    '=' => {
-                        self.index += 1;
-                        result.tag = .caret_equal;
-                    },
-                    else => result.tag = .caret,
-                }
-            },
-            .ampersand => {
-                self.index += 1;
-                switch (self.source[self.index]) {
-                    '\'', '"' => continue :state .string_literal,
-                    '=' => {
-                        self.index += 1;
-                        result.tag = .ampersand_equal;
-                    },
-                    '&' => {
-                        self.index += 1;
-                        result.tag = .ampersand_ampersand;
-                    },
-                    else => result.tag = .ampersand,
-                }
-            },
-            .pipe => {
-                self.index += 1;
-                switch (self.source[self.index]) {
-                    '=' => {
-                        self.index += 1;
-                        result.tag = .pipe_equal;
-                    },
-                    '|' => {
-                        self.index += 1;
-                        result.tag = .pipe_pipe;
-                    },
-                    else => result.tag = .pipe,
-                }
-            },
-            .period => {
-                self.index += 1;
-                switch (self.source[self.index]) {
-                    '.' => continue :state .period_period,
-                    '0'...'9' => continue :state .number,
-                    else => result.tag = .period,
-                }
-            },
-            .period_period => {
-                self.index += 1;
-                switch (self.source[self.index]) {
-                    '.' => {
-                        self.index += 1;
-                        result.tag = .period_period_period;
-                    },
-                    else => result.tag = .period_period,
-                }
-            },
-            .identifier => {
-                self.index += 1;
-                switch (self.source[self.index]) {
-                    'a'...'z', 'A'...'Z', '_', '0'...'9' => continue :state .identifier,
-                    else => {
-                        const ident = self.source[result.loc.start..self.index];
-                        if (Token.getKeyword(ident)) |tag| {
-                            result.tag = tag;
-                        }
-                    }
-                }
-            },
-            else => {
-                self.index += 1;
-                result.tag = .empty;
-            },
+            };
         }
 
-        result.loc.end = self.index;
-        return result;
+        return .{ .tag = .eof, .loc = .{ .start = 0, .end = 0 } };
+    }
+
+    inline fn is_at_end(self: *const Tokenizer) bool {
+        return self.index >= self.source.len - 1;
+    }
+
+    fn advance(self: *Tokenizer) u8 {
+        _ = self;
+        return 0;
+    }
+
+    fn peek(self: *const Tokenizer) ?u8 {
+        if (self.index + 1 >= self.source.len)
+            return null;
+        return self.source[self.index + 1];
+    }
+
+    fn peekN(self: *const Tokenizer, n: usize) ?u8 {
+        if (self.index + n >= self.source.len)
+            return null;
+        return self.source[self.index + n];
     }
 };

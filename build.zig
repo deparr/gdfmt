@@ -10,10 +10,18 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    const zd = b.dependency("zd", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    gdfmt_mod.addImport("zd", zd.module("zd"));
+
     const gdfmt_exe = b.addExecutable(.{
         .name = "gdfmt",
         .root_module = gdfmt_mod,
     });
+
 
     const check_only = b.option(bool, "check", "check only") orelse false;
 
