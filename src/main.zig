@@ -17,9 +17,10 @@ pub fn main() !void {
     var tokenizer = Tokenizer.init(source);
     var tokens: std.ArrayList(Token) = .empty;
     defer tokens.deinit(gpa);
-    while (!tokenizer.isAtEnd()) {
+    while (true) {
         const token = tokenizer.next();
         try tokens.append(gpa, token);
+        if (token.tag == .eof) break;
     }
 
     for (tokens.items) |token| {
@@ -31,9 +32,10 @@ pub fn main() !void {
             std.debug.print("\n", .{});
             continue;
         }
-        std.debug.print("{s}, {d}, {s}\n", .{
+        std.debug.print(".{s} @ {d}:{d} {s}", .{
             @tagName(token.tag),
             token.loc.start,
+            token.loc.end,
             symbol,
         });
     }

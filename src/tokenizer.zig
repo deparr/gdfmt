@@ -391,9 +391,7 @@ pub const Tokenizer = struct {
     }
 
     pub fn next(self: *Tokenizer) Token {
-
         if (self.isAtEnd()) {
-            std.debug.print("{d} / {d} \n", .{ self.index, self.source.len });
             return .{
                 .tag = .eof,
                 .loc = .{
@@ -411,7 +409,8 @@ pub const Tokenizer = struct {
             .loc = .{ .start = self.index },
         };
 
-        switch (self.source[self.index]) {
+        const at = self.source[self.index];
+        switch (at) {
             '\r' => {
                 if (self.peek() == '\n') {
                     token.tag = .newline;
@@ -550,7 +549,7 @@ pub const Tokenizer = struct {
     }
 
     pub fn isAtEnd(self: *const Tokenizer) bool {
-        return self.index >= self.source.len - 1 or self.source[self.index] == 0;
+        return self.index > self.source.len or self.source[self.index] == 0;
     }
 
     fn advance(self: *Tokenizer) void {
@@ -558,12 +557,12 @@ pub const Tokenizer = struct {
     }
 
     fn peek(self: *const Tokenizer) u8 {
-        std.debug.assert(self.index + 1 < self.source.len);
+        std.debug.assert(self.index + 1 <= self.source.len);
         return self.source[self.index + 1];
     }
 
     fn peekN(self: *const Tokenizer, n: usize) u8 {
-        std.debug.assert(self.index + n < self.source.len);
+        std.debug.assert(self.index + n <= self.source.len);
         return self.source[self.index + n];
     }
 
@@ -578,7 +577,6 @@ pub const Tokenizer = struct {
     }
 
     fn ident(self: *Tokenizer) Token.Tag {
-        @breakpoint();
         var end = self.index + 1;
         while (true) {
             switch (self.source[end]) {
@@ -588,19 +586,22 @@ pub const Tokenizer = struct {
         }
         const len = end - self.index;
         const literal = self.source[self.index..end];
-        var tag: Token.Tag = .identifier;
+        var tag: Token.Tag = .empty;
         if (len == 1 and literal[0] == '_') {
             tag = .underscore;
 
             // ident is actually a literal
         } else if (strcmp(literal, "true") or strcmp(literal, "false") or strcmp(literal, "null")) {
             tag = .literal;
-
+            self.index = end;
             // ident is actually a keyword
-        } else if (Token.getKeyword(self.source[self.index..end])) |keyword| {
+        } else if (Token.getKeyword(literal)) |keyword| {
             tag = keyword;
+        } else {
+            tag = .identifier;
+            self.index = end;
         }
-        self.index = end;
+
         return tag;
     }
 
