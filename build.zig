@@ -4,33 +4,27 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
 
-    const gdfmt_mod = b.addModule("gdfmt", .{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
+    const run_step = b.step("run", "run the program");
+    // const test_step = b.step("test", "run tests");
 
-    const zd = b.dependency("zd", .{
-        .target = target,
-        .optimize = optimize,
-    });
-
-    gdfmt_mod.addImport("zd", zd.module("zd"));
+    // const zd = b.dependency("zd", .{
+    //     .target = target,
+    //     .optimize = optimize,
+    // });
 
     const gdfmt_exe = b.addExecutable(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
         .name = "gdfmt",
-        .root_module = gdfmt_mod,
     });
+    b.installArtifact(gdfmt_exe);
 
-
-    const check_only = b.option(bool, "check", "check only") orelse false;
-
-    const check_step = b.step("check", "check only");
-    check_step.dependOn(&gdfmt_exe.step);
-
-    if (check_only) {
-        b.getInstallStep().dependOn(&gdfmt_exe.step);
-    } else {
-        b.installArtifact(gdfmt_exe);
+    const run = b.addRunArtifact(gdfmt_exe);
+    if (b.args) |args| {
+        run.addArgs(args);
     }
+    run_step.dependOn(&run.step);
 }

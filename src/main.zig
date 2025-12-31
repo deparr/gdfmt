@@ -7,36 +7,25 @@ pub fn main() !void {
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
     defer _ = debug_allocator.deinit();
     const gpa = debug_allocator.allocator();
+    const args = try std.process.argsAlloc(gpa);
+    defer std.process.argsFree(gpa, args);
 
-    const source = try std.fs.cwd().readFileAllocOptions(gpa, "./res/example.gd", 1 << 20, null, .@"1", 0);
-    std.debug.print("{s} {{ .len = {d} }}\n", .{ source, source.len });
+    const source = try std.fs.cwd().readFileAllocOptions(gpa, args[1], 1 << 20, null, .@"1", 0);
+    defer gpa.free(source);
+    std.debug.print("{s}{{ .len = {d} }}\n", .{ source, source.len });
 
-    var tokenizer: Tokenizer = .{ .source = source };
-    var tokens: std.ArrayList(struct {
-        tag: Token.Tag,
-        start: u32,
-    }) = .empty;
+    var tokenizer = Tokenizer.init(source);
+    var tokens: std.ArrayList(Token) = .empty;
     defer tokens.deinit(gpa);
-    while (true) {
+    while (!tokenizer.isAtEnd()) {
         const token = tokenizer.next();
-        try tokens.append(gpa, .{
-            .tag = token.tag,
-            .start = @intCast(token.loc.start),
-        });
-        if (token.tag == .eof) break;
+        try tokens.append(gpa, token);
     }
 
     for (tokens.items) |token| {
         const symbol = switch (token.tag) {
-            .identifier, .annotation => blk: {
-                var t: Tokenizer = .{
-                    .source = source,
-                    .index = token.start,
-                };
-                const tk = t.next();
-                break :blk source[tk.loc.start..tk.loc.end];
-            },
-            else => token.tag.symbol(),
+            .identifier, .annotation => source[token.loc.start..token.loc.end],
+            else => "",
         };
         if (token.tag == .newline) {
             std.debug.print("\n", .{});
@@ -44,13 +33,8 @@ pub fn main() !void {
         }
         std.debug.print("{{ .{s}, {d}, {s} }}, ", .{
             @tagName(token.tag),
-            token.start,
+            token.loc.start,
             symbol,
         });
     }
-
-    // const a_lines = try zd.splitString(gpa, @embedFile("tokenizer.zig"));
-    // const b_lines = try zd.splitString(gpa, @embedFile("tokenizer_sm.zig"));
-    // const diff = try zd.diffLines(gpa, a_lines, b_lines);
-    // std.debug.print("finished, {d} actions\n", .{ diff.len });
 }
