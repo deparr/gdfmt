@@ -31,7 +31,7 @@ pub fn main() !void {
             std.debug.print("\n", .{});
             continue;
         }
-        std.debug.print("{{ .{s}, {d}, {s} }}, ", .{
+        std.debug.print("{s}, {d}, {s}\n", .{
             @tagName(token.tag),
             token.loc.start,
             symbol,

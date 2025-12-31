@@ -66,7 +66,8 @@ pub const Token = struct {
             .@"break",
             .breakpoint,
             .class_name,
-            .class, .@"const",
+            .class,
+            .@"const",
             .pi,
             .inf,
             .nan,
@@ -215,6 +216,7 @@ pub const Token = struct {
         backtick,
         question_mark,
 
+        invalid,
         @"error",
         eof,
 
@@ -228,6 +230,7 @@ pub const Token = struct {
                 .indent,
                 .dedent,
                 .vcs_conflict_marker,
+                .invalid,
                 .@"error",
                 .eof,
                 => null,
@@ -327,7 +330,7 @@ pub const Token = struct {
                 .pi => "PI",
                 .tau => "TAU",
                 .inf => "INF",
-                .nan => "NaN",
+                .nan => "NAN",
 
                 .backtick => "`",
                 .question_mark => "?",
@@ -350,6 +353,23 @@ pub const Token = struct {
                 else => unreachable,
             };
         }
+
+        pub fn canPrecedeBinOp(self: Tag) bool {
+            return switch (self) {
+                .identifier,
+                .literal,
+                .self,
+                .paren_close,
+                .bracket_close,
+                .brace_close,
+                .pi,
+                .nan,
+                .tau,
+                .inf,
+                => true,
+                else => false,
+            };
+        }
     };
 };
 
@@ -357,6 +377,7 @@ pub const Tokenizer = struct {
     // [TODO] might need an allocator
     source: [:0]const u8,
     index: u32 = 0,
+    last_tag: Token.Tag = .empty,
     sent_eof: bool = false,
     pending_newline: bool = false,
     pending_indents: u32 = 0,
@@ -371,10 +392,8 @@ pub const Tokenizer = struct {
 
     pub fn next(self: *Tokenizer) Token {
 
-        // FIXME: THIS IS NOT CORRECT
-        self.skipWhitespace();
-
         if (self.isAtEnd()) {
+            std.debug.print("{d} / {d} \n", .{ self.index, self.source.len });
             return .{
                 .tag = .eof,
                 .loc = .{
@@ -384,6 +403,9 @@ pub const Tokenizer = struct {
             };
         }
 
+        // FIXME: THIS IS NOT CORRECT
+        self.skipWhitespace();
+
         var token = Token{
             .tag = .empty,
             .loc = .{ .start = self.index },
@@ -391,12 +413,10 @@ pub const Tokenizer = struct {
 
         switch (self.source[self.index]) {
             '\r' => {
-                if (self.peek()) |byte| {
-                    if (byte == '\n') {
-                        token.tag = .newline;
-                        token.loc.end = self.index + 1;
-                        self.advance(); // not sure if i like this
-                    }
+                if (self.peek() == '\n') {
+                    token.tag = .newline;
+                    token.loc.end = self.index + 1;
+                    self.advance(); // not sure if i like this
                 }
             },
             '\n' => {
@@ -408,9 +428,124 @@ pub const Tokenizer = struct {
                 token.tag = self.ident();
                 token.loc.end = self.index;
             },
-            else => {},
+
+            '~' => token.tag = .tilde,
+            ',' => token.tag = .comma,
+            ':' => token.tag = .colon,
+            ';' => token.tag = .semicolon,
+            '$' => token.tag = .dollar,
+            '?' => token.tag = .question_mark,
+
+            // TODO godot tracks the paren stack during lexing
+            // not sure if I want or need to do that
+            '(' => token.tag = .paren_open,
+            ')' => token.tag = .paren_close,
+            '[' => token.tag = .bracket_open,
+            ']' => token.tag = .bracket_close,
+            '{' => token.tag = .brace_open,
+            '}' => token.tag = .brace_close,
+
+            '!' => token.tag = if (self.peek() == '=') .bang_equal else .bang,
+            '/' => token.tag = if (self.peek() == '=') .slash_equal else .slash,
+            '%' => token.tag = if (self.peek() == '=') .percent_equal else .percent,
+            '=' => token.tag = if (self.peek() == '=') self.checkVCSMarker() else .equal,
+            '+' => token.tag = blk: {
+                if (self.peek() == '=') {
+                    break :blk .plus_equal;
+                } else if (std.ascii.isDigit(self.peek()) and !self.last_tag.canPrecedeBinOp()) {
+                    break :blk self.number();
+                } else {
+                    break :blk .plus;
+                }
+            },
+            '-' => token.tag = blk: {
+                if (self.peek() == '=') {
+                    break :blk .minus_equal;
+                } else if (std.ascii.isDigit(self.peek()) and !self.last_tag.canPrecedeBinOp()) {
+                    break :blk self.number();
+                } else if (self.peek() == '>') {
+                    break :blk .forward_arrow;
+                } else {
+                    break :blk .minus;
+                }
+            },
+            '*' => token.tag = blk: {
+                if (self.peek() == '*') {
+                    break :blk if (self.peekN(2) == '=') .star_star_equal else .star_star;
+                } else if (self.peek() == '=') {
+                    break :blk .star_equal;
+                } else {
+                    break :blk .star;
+                }
+            },
+            '^' => token.tag = switch (self.peek()) {
+                '=' => .caret_equal,
+                '"', '\'' => self.string(),
+                else => .caret,
+            },
+            '&' => token.tag = switch (self.peek()) {
+                '=' => .ampersand_equal,
+                '&' => .ampersand_ampersand,
+                '"', '\'' => self.string(),
+                else => .ampersand,
+            },
+            '|' => token.tag = switch (self.peek()) {
+                '=' => .pipe_equal,
+                '|' => .pipe_pipe,
+                else => .pipe,
+            },
+            '.' => token.tag = blk: {
+                if (self.peek() == '.') {
+                    break :blk if (self.peekN(2) == '.') .period_period_period else .period_period;
+                } else if (std.ascii.isDigit(self.peek())) {
+                    break :blk self.number();
+                } else {
+                    break :blk .period;
+                }
+            },
+
+            '<' => {
+                const compound_tag: Token.Tag = switch (self.peek()) {
+                    '<' => .less_less,
+                    '=' => .less_equal,
+                    else => .empty,
+                };
+                token.tag = switch (compound_tag) {
+                    .less_less => if (self.peekN(2) == '=')
+                        .less_less_equal
+                    else
+                        // TODO VCS markers ??
+                        .less_less,
+                    .less_equal => .less_equal,
+                    else => .less,
+                };
+            },
+            '>' => {
+                const compound_tag: Token.Tag = switch (self.peek()) {
+                    '>' => .greater_greater,
+                    '=' => .greater_equal,
+                    else => .empty,
+                };
+                token.tag = switch (compound_tag) {
+                    .greater_greater => if (self.peekN(2) == '=')
+                        .greater_greater_equal
+                    else
+                        .greater_greater,
+                    .greater_equal => .greater_equal,
+                    else => .greater,
+                };
+            },
+            else => token.tag = .invalid,
         }
 
+        // variable length tokens update the index as they are created
+        if (token.tag.lexeme()) |lexeme| {
+            self.index += @truncate(lexeme.len);
+        } else if (token.tag == .invalid) {
+            self.index += 1;
+        }
+
+        self.last_tag = token.tag;
         return token;
     }
 
@@ -422,19 +557,18 @@ pub const Tokenizer = struct {
         self.index += 1;
     }
 
-    fn peek(self: *const Tokenizer) ?u8 {
-        if (self.index + 1 >= self.source.len)
-            return null;
+    fn peek(self: *const Tokenizer) u8 {
+        std.debug.assert(self.index + 1 < self.source.len);
         return self.source[self.index + 1];
     }
 
-    fn peekN(self: *const Tokenizer, n: usize) ?u8 {
-        if (self.index + n >= self.source.len)
-            return null;
+    fn peekN(self: *const Tokenizer, n: usize) u8 {
+        std.debug.assert(self.index + n < self.source.len);
         return self.source[self.index + n];
     }
 
     fn skipWhitespace(self: *Tokenizer) void {
+        // std.debug.print("'{s}'\n", .{ self.source });
         while (true) {
             switch (self.source[self.index]) {
                 ' ', '\t', '\r' => self.index += 1,
@@ -444,6 +578,7 @@ pub const Tokenizer = struct {
     }
 
     fn ident(self: *Tokenizer) Token.Tag {
+        @breakpoint();
         var end = self.index + 1;
         while (true) {
             switch (self.source[end]) {
@@ -467,6 +602,22 @@ pub const Tokenizer = struct {
         }
         self.index = end;
         return tag;
+    }
+
+    fn number(self: *Tokenizer) Token.Tag {
+        while (std.ascii.isDigit(self.source[self.index])) : (self.index += 1) {}
+        return .literal;
+    }
+
+    fn string(self: *Tokenizer) Token.Tag {
+        self.index += 1;
+        return .literal;
+    }
+
+    // TODO vcs markers
+    fn checkVCSMarker(self: *Tokenizer) Token.Tag {
+        _ = self;
+        return .equal_equal;
     }
 };
 
@@ -526,4 +677,45 @@ test "keywords" {
     try testTokenize("return", &.{.@"return"});
     try testTokenize("match", &.{.match});
     try testTokenize("when", &.{.when});
+}
+
+test "operators" {
+    try testTokenize(
+        "%%=*=**=***++=--====!!=<<>><=<>=>->^^=&&&=&|||=....|..?",
+        &.{
+            .percent,
+            .percent_equal,
+            .star_equal,
+            .star_star_equal,
+            .star_star,
+            .star,
+            .plus,
+            .plus_equal,
+            .minus,
+            .minus_equal,
+            .equal_equal,
+            .equal,
+            .bang,
+            .bang_equal,
+            .less_less,
+            .greater_greater,
+            .less_equal,
+            .less,
+            .greater_equal,
+            .greater,
+            .forward_arrow,
+            .caret,
+            .caret_equal,
+            .ampersand_ampersand,
+            .ampersand_equal,
+            .ampersand,
+            .pipe_pipe,
+            .pipe_equal,
+            .period_period_period,
+            .period,
+            .pipe,
+            .period_period,
+            .question_mark,
+        },
+    );
 }
