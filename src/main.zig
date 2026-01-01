@@ -32,10 +32,9 @@ pub fn main() !void {
             std.debug.print("\n", .{});
             continue;
         }
-        std.debug.print(".{s} @ {d}:{d} {s}", .{
+        std.debug.print(".{s}({d}) {s} ", .{
             @tagName(token.tag),
             token.loc.start,
-            token.loc.end,
             symbol,
         });
     }

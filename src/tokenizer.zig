@@ -427,7 +427,13 @@ pub const Tokenizer = struct {
                 token.tag = self.ident();
                 token.loc.end = self.index;
             },
+            '@' => {
+                token.tag = self.annotation();
+                token.loc.end = self.index;
+            },
 
+            // godot handles comments in skipwhitespace
+            '#' => token.tag = .invalid,
             '~' => token.tag = .tilde,
             ',' => token.tag = .comma,
             ':' => token.tag = .colon,
@@ -576,6 +582,7 @@ pub const Tokenizer = struct {
         }
     }
 
+    // TODO unicode
     fn ident(self: *Tokenizer) Token.Tag {
         var end = self.index + 1;
         while (true) {
@@ -603,6 +610,20 @@ pub const Tokenizer = struct {
         }
 
         return tag;
+    }
+
+    // TODO unicode
+    // TODO merge with ident ?
+    fn annotation(self: *Tokenizer) Token.Tag {
+        var end = self.index + 1;
+        while (true) {
+            switch(self.source[end]) {
+                '_', 'A'...'Z', 'a'...'z', '0'...'9' => end += 1,
+                else => break,
+            }
+        }
+        self.index = end;
+        return .annotation;
     }
 
     fn number(self: *Tokenizer) Token.Tag {
