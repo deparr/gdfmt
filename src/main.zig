@@ -1,6 +1,7 @@
 const std = @import("std");
-const Tokenizer = @import("tokenizer.zig").Tokenizer;
-const Token = @import("tokenizer.zig").Token;
+const tlib = @import("tokenizer.zig");
+const Tokenizer = tlib.Tokenizer;
+const Token = tlib.Token;
 const zd = @import("zd");
 
 pub fn main() !void {
@@ -34,20 +35,8 @@ pub fn main() !void {
         });
         if (token.tag == .eof) break;
     }
+}
 
-    // for (tokens.items) |token| {
-    //     const symbol = switch (token.tag) {
-    //         .identifier, .annotation => source[token.loc.start..token.loc.end],
-    //         else => "",
-    //     };
-    //     if (token.tag == .newline) {
-    //         std.debug.print("\n", .{});
-    //         continue;
-    //     }
-    //     std.debug.print(".{s}({d}) {s} ", .{
-    //         @tagName(token.tag),
-    //         token.loc.start,
-    //         symbol,
-    //     });
-    // }
+test {
+    _ = tlib;
 }
