@@ -111,6 +111,7 @@ pub const Token = struct {
         annotation,
         identifier,
         literal,
+        comment,
 
         less,
         less_equal,
@@ -230,6 +231,7 @@ pub const Token = struct {
                 .indent,
                 .dedent,
                 .vcs_conflict_marker,
+                .comment,
                 .invalid,
                 .@"error",
                 .eof,
@@ -346,6 +348,7 @@ pub const Token = struct {
                 .newline => "<<newline>>",
                 .indent => "<<indent>>",
                 .dedent => "<<dedent>>",
+                .comment => "<<comment>>",
                 .vcs_conflict_marker => "<<vcs_conflict_marker>>",
                 .@"error" => "<<someerror>>",
                 .eof => "<<EOF>>",
@@ -412,33 +415,29 @@ pub const Tokenizer = struct {
         const at = self.source[self.index];
         switch (at) {
             '\r' => {
+                // TODO should just ignore stray \r
                 if (self.peek(1) == '\n') {
                     token.tag = .newline;
                     token.loc.end = self.index + 1;
                     self.advance(); // not sure if i like this
                 }
             },
+            // TODO newlines
             '\n' => {
                 token.tag = .newline;
-                token.loc.end = self.index + 1;
-                self.advance();
+                self.index += 1;
             },
-            '_', 'A'...'Z', 'a'...'z' => {
-                token.tag = self.ident();
-                token.loc.end = self.index;
-            },
-            '@' => {
-                token.tag = self.annotation();
-                token.loc.end = self.index;
-            },
+            'r' => token.tag = if (self.peek(1) == '\'' or self.peek(1) == '"')
+                self.string()
+            else
+                self.ident(),
 
-            '0'...'9' => {
-                token.tag = self.number();
-                token.loc.end = self.index;
-            },
+            '\'', '"' => token.tag = self.string(),
+            '_', 'A'...'Z', 'a'...'q', 's'...'z' => token.tag = self.ident(),
+            '@' => token.tag = self.annotation(),
+            '#' => token.tag = self.lineComment(),
+            '0'...'9' => token.tag = self.number(),
 
-            // godot handles comments in skipwhitespace
-            '#' => token.tag = .invalid,
             '~' => token.tag = .tilde,
             ',' => token.tag = .comma,
             ':' => token.tag = .colon,
@@ -458,13 +457,12 @@ pub const Tokenizer = struct {
             '!' => token.tag = if (self.peek(1) == '=') .bang_equal else .bang,
             '/' => token.tag = if (self.peek(1) == '=') .slash_equal else .slash,
             '%' => token.tag = if (self.peek(1) == '=') .percent_equal else .percent,
-            '=' => token.tag = if (self.peek(1) == '=') self.VCSMarker() else .equal,
+            '=' => token.tag = if (self.peek(1) == '=') self.VCSMarker(.equal_equal) else .equal,
             '+' => token.tag = blk: {
                 if (self.peek(1) == '=') {
                     break :blk .plus_equal;
                 } else if (std.ascii.isDigit(self.peek(1)) and !self.last_tag.canPrecedeBinOp()) {
                     const tag = self.number();
-                    token.loc.end = self.index;
                     break :blk tag;
                 } else {
                     break :blk .plus;
@@ -475,7 +473,6 @@ pub const Tokenizer = struct {
                     break :blk .minus_equal;
                 } else if (std.ascii.isDigit(self.peek(1)) and !self.last_tag.canPrecedeBinOp()) {
                     const tag = self.number();
-                    token.loc.end = self.index;
                     break :blk tag;
                 } else if (self.peek(1) == '>') {
                     break :blk .forward_arrow;
@@ -513,7 +510,6 @@ pub const Tokenizer = struct {
                     break :blk if (self.peek(2) == '.') .period_period_period else .period_period;
                 } else if (std.ascii.isDigit(self.peek(1))) {
                     const tag = self.number();
-                    token.loc.end = self.index;
                     break :blk tag;
                 } else {
                     break :blk .period;
@@ -530,8 +526,7 @@ pub const Tokenizer = struct {
                     .less_less => if (self.peek(2) == '=')
                         .less_less_equal
                     else
-                        // TODO VCS markers ??
-                        .less_less,
+                        self.VCSMarker(.less_less),
                     .less_equal => .less_equal,
                     else => .less,
                 };
@@ -546,7 +541,7 @@ pub const Tokenizer = struct {
                     .greater_greater => if (self.peek(2) == '=')
                         .greater_greater_equal
                     else
-                        .greater_greater,
+                        self.VCSMarker(.greater_greater),
                     .greater_equal => .greater_equal,
                     else => .greater,
                 };
@@ -560,6 +555,7 @@ pub const Tokenizer = struct {
         } else if (token.tag == .invalid) {
             self.index += 1;
         }
+        token.loc.end = self.index;
 
         self.last_tag = token.tag;
         return token;
@@ -635,10 +631,11 @@ pub const Tokenizer = struct {
     }
 
     fn number(self: *Tokenizer) Token.Tag {
-        var base = Base.decimal;
+        var base: enum { decimal, hexadecimal, binary } = .decimal;
         var has_decimal = false;
         var has_error = false;
         var need_digits = false;
+        var isDigitFn: *const fn (u8) bool = isDigit;
 
         // consume sign
         if (self.peek(0) == '-' or self.peek(0) == '+') self.index += 1;
@@ -648,10 +645,12 @@ pub const Tokenizer = struct {
             self.index += 1;
             if (self.peek(0) == 'x' or self.peek(0) == 'X') {
                 base = .hexadecimal;
+                isDigitFn = isHexDigit;
                 need_digits = true;
                 self.index += 1;
             } else if (self.peek(0) == 'b' or self.peek(0) == 'B') {
                 base = .binary;
+                isDigitFn = isBinDigit;
                 need_digits = true;
                 self.index += 1;
             }
@@ -669,7 +668,7 @@ pub const Tokenizer = struct {
 
         // consume to end of literal OR '.'
         var prev_was_underscore = false;
-        while (isDigit(self.peek(0), base)) {
+        while (isDigitFn(self.peek(0))) {
             if (self.peek(0) == '_') {
                 if (prev_was_underscore) {
                     std.debug.print("TODO errors: multiple underscores cannot adjacent in numeric literal\n", .{});
@@ -700,7 +699,7 @@ pub const Tokenizer = struct {
             if (!has_error) {
                 self.index += 1;
                 prev_was_underscore = false;
-                while (isDigit(self.peek(0), base)) {
+                while (isDigitFn(self.peek(0))) {
                     if (self.peek(0) == '_') {
                         if (prev_was_underscore) {
                             std.debug.print("TODO errors: multiple underscores cannot adjacent in numeric literal\n", .{});
@@ -721,12 +720,12 @@ pub const Tokenizer = struct {
             if (self.peek(0) == '+' or self.peek(0) == '-')
                 self.index += 1;
 
-            if (!isDigit(self.peek(0), base)) {
+            if (!isDigitFn(self.peek(0))) {
                 std.debug.print("TODO errors: expected digit after \"e\".\n", .{});
             }
 
             prev_was_underscore = false;
-            while (isDigit(self.peek(0), base)) {
+            while (isDigitFn(self.peek(0))) {
                 if (self.peek(0) == '_') {
                     if (prev_was_underscore) {
                         std.debug.print("TODO errors: multiple underscores cannot adjacent in numeric literal\n", .{});
@@ -760,15 +759,86 @@ pub const Tokenizer = struct {
         return .literal;
     }
 
+    // todo unicode
     fn string(self: *Tokenizer) Token.Tag {
+        const StringType = enum {
+            regular,
+            name,
+            nodepath,
+        };
+        var is_raw = false;
+        var is_multiline = false;
+        var stype = StringType.regular;
+
+        switch (self.peek(0)) {
+            'r' => {
+                is_raw = true;
+                self.index += 1;
+            },
+            '&' => {
+                stype = .name;
+                self.index += 1;
+            },
+            '^' => {
+                stype = .nodepath;
+                self.index += 1;
+            },
+            else => {},
+        }
+
+        // consume all leading quotes
+        const quote_char = self.peek(0);
+        std.debug.assert(quote_char == '\'' or quote_char == '"');
         self.index += 1;
+        if (self.peek(0) == quote_char and self.peek(1) == quote_char) {
+            is_multiline = true;
+            self.index += 2;
+        }
+
+        while (true) {
+            if (self.isAtEnd()) {
+                std.debug.print("TODO errors: unterminated string\n", .{});
+                return .literal;
+            }
+            const char = self.peek(0);
+            if (char == quote_char) {
+                if (is_multiline) {
+                    if (self.peek(1) == quote_char and self.peek(2) == quote_char) {
+                        self.index += 3;
+                        break;
+                    }
+                } else {
+                    if (self.peek(-1) != '\\') {
+                        self.index += 1;
+                        break;
+                    }
+                }
+            }
+            self.index += 1;
+        }
+
         return .literal;
     }
 
-    // TODO vcs markers
-    fn VCSMarker(self: *Tokenizer) Token.Tag {
-        _ = self;
-        return .equal_equal;
+    fn lineComment(self: *Tokenizer) Token.Tag {
+        while (self.peek(0) != '\n' and self.peek(0) != 0) {
+            self.index += 1;
+        }
+        return .comment;
+    }
+
+    fn VCSMarker(self: *Tokenizer, double_tag_type: Token.Tag) Token.Tag {
+        var n: i32 = 1;
+        const char_to_mach = self.peek(0);
+        while (self.peek(n) == char_to_mach) {
+            n += 1;
+        }
+        if (n >= 7) {
+            self.index += @abs(n);
+            return .vcs_conflict_marker;
+        }
+        // otherwise it's a regular double tag
+        return double_tag_type;
     }
 };
 
@@ -776,24 +846,25 @@ fn strcmp(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);
 }
 
-const Base = enum {
-    decimal,
-    hexadecimal,
-    binary,
-};
-// todo not sure if I like this more than nested switches
-fn isDigit(c: u8, base: Base) bool {
-    const digits = [_]u8{ '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
-    if (c == '_') return true;
-    const lc = std.ascii.toLower(c);
-    const digit_set = switch (base) {
-        .binary => digits[0..2],
-        .decimal,
-        => digits[0..10],
-        .hexadecimal,
-        => &digits,
+fn isDigit(c: u8) bool {
+    return switch (c) {
+        '_', '0'...'9' => true,
+        else => false,
     };
-    return std.mem.indexOfScalar(u8, digit_set, lc) != null;
+}
+
+fn isHexDigit(c: u8) bool {
+    return switch (c) {
+        '_', '0'...'9', 'a'...'f', 'A'...'F' => true,
+        else => false,
+    };
+}
+
+fn isBinDigit(c: u8) bool {
+    return switch (c) {
+        '_', '0', '1' => true,
+        else => false,
+    };
 }
 
 // TODO unicode
