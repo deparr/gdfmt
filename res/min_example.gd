@@ -1,1 +1,1 @@
-r"string"
+const a = 100

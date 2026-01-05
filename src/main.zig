@@ -15,26 +15,23 @@ pub fn main() !void {
     defer gpa.free(source);
     std.debug.print("{s}{{ .len = {d} }}\n", .{ source, source.len });
 
-    var tokenizer = Tokenizer.init(source);
-    var tokens: std.ArrayList(Token) = .empty;
-    defer tokens.deinit(gpa);
-    while (true) {
+    var tokenizer = try Tokenizer.init(source, gpa);
+    while (!tokenizer.sent_eof) {
         const token = tokenizer.next();
         const symbol = switch (token.tag) {
             .identifier, .annotation, .literal => source[token.loc.start..token.loc.end],
             else => "",
         };
-        if (token.tag == .newline) {
-            std.debug.print("\n", .{});
-            continue;
-        }
-        std.debug.print(".{s}({d}) {s} ", .{
+        std.debug.print(".{s}:{d}'{s}' ", .{
             @tagName(token.tag),
             token.loc.start,
             symbol,
         });
-        if (token.tag == .eof) break;
+        if (token.tag == .newline) {
+            std.debug.print("\n", .{});
+        }
     }
+    tokenizer.deinit();
 }
 
 test {
