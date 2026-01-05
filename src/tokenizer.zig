@@ -779,7 +779,7 @@ pub const Tokenizer = struct {
 
             if (current_indent > previous_indent) {
                 // indentation increased
-                self.indent_stack.appendAssumeCapacity(current_indent);
+                self.indent_stack.append(self.arena.allocator(), current_indent) catch unreachable;
                 self.pending_indents += 1;
             } else {
                 // indentation decreased
@@ -792,7 +792,7 @@ pub const Tokenizer = struct {
                 if ((self.indentLevel() > 0 and self.indent_stack.getLast() != current_indent) or (self.indentLevel() == 0 and current_indent != 0)) {
                     std.debug.print("TODO errors: unindent doesn't match the previous indent level\n", .{});
                     // add it anyway
-                    self.indent_stack.appendAssumeCapacity(current_indent);
+                    self.indent_stack.append(self.arena.allocator(), current_indent) catch unreachable;
                 }
             }
 
