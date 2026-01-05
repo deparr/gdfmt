@@ -385,7 +385,7 @@ pub const Tokenizer = struct {
     arena: std.heap.ArenaAllocator,
     // whitespace state
     indent_char: ?u8 = null,
-    pending_newline: bool = false,
+    pending_newlines: u32 = 0,
     line_continuation: bool = false,
     pending_indents: i32 = 0,
     indent_stack: std.ArrayList(i32),
@@ -414,16 +414,20 @@ pub const Tokenizer = struct {
     pub fn next(self: *Tokenizer) Token {
         self.skipWhitespace();
 
-        if (self.pending_newline) {
-            self.pending_newline = false;
+        if (self.pending_newlines > 0) {
+            self.pending_newlines -= 1;
             self.last_tag = .newline;
-            return self.last_newline;
+            var token = self.last_newline;
+            token.loc.start -= self.pending_newlines;
+            token.loc.end -= self.pending_newlines;
+            return token;
         }
 
         var token = Token{
             .tag = .empty,
             .loc = .{ .start = self.index },
         };
+        defer self.last_tag = token.tag;
 
         if (self.pending_indents != 0) {
             // todo how do these affect self.index ??
@@ -435,14 +439,12 @@ pub const Tokenizer = struct {
                 self.pending_indents += 1;
                 token.tag = .dedent;
             }
-
+            token.loc.end = self.index;
             return token;
         }
 
-
         if (self.isAtEnd()) {
             token = self.finish();
-            self.last_tag = token.tag;
             return token;
         }
 
@@ -602,7 +604,6 @@ pub const Tokenizer = struct {
         }
         token.loc.end = self.index;
 
-        self.last_tag = token.tag;
         return token;
     }
 
@@ -712,7 +713,7 @@ pub const Tokenizer = struct {
             if (self.peek(0) == '\n') {
                 self.advance(1);
                 self.newline(true);
-                return; // todo is continue in godot
+                continue;
             }
 
             var mixed = false;
@@ -744,7 +745,7 @@ pub const Tokenizer = struct {
             if (self.peek(0) == '\n') {
                 self.advance(1);
                 self.newline(true);
-                return; // todo is continue in godot
+                continue;
             }
 
             // todo multiline_mode
@@ -788,8 +789,7 @@ pub const Tokenizer = struct {
                     self.pending_indents -= 1;
                 }
 
-                if ((self.indentLevel() > 0 and self.indent_stack.getLast() != current_indent)
-                    or (self.indentLevel() == 0 and current_indent != 0)) {
+                if ((self.indentLevel() > 0 and self.indent_stack.getLast() != current_indent) or (self.indentLevel() == 0 and current_indent != 0)) {
                     std.debug.print("TODO errors: unindent doesn't match the previous indent level\n", .{});
                     // add it anyway
                     self.indent_stack.appendAssumeCapacity(current_indent);
@@ -802,10 +802,10 @@ pub const Tokenizer = struct {
     }
 
     fn newline(self: *Tokenizer, make_token: bool) void {
-        if (make_token and !self.pending_newline and !self.line_continuation) {
-            self.last_newline.loc.start = self.index;
-            self.last_newline.loc.end = self.index + 1;
-            self.pending_newline = true;
+        if (make_token and !self.line_continuation) {
+            self.last_newline.loc.start = self.index -| 1;
+            self.last_newline.loc.end = self.index;
+            self.pending_newlines += 1;
         }
         self.line += 1;
         self.column = 1;

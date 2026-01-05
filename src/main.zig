@@ -18,18 +18,15 @@ pub fn main() !void {
     var tokenizer = try Tokenizer.init(source, gpa);
     while (!tokenizer.sent_eof) {
         const token = tokenizer.next();
-        const symbol = switch (token.tag) {
-            .identifier, .annotation, .literal => source[token.loc.start..token.loc.end],
-            else => "",
-        };
-        std.debug.print(".{s}:{d}'{s}' ", .{
+        std.debug.print(".{s} at[{d}:", .{
             @tagName(token.tag),
             token.loc.start,
-            symbol,
         });
-        if (token.tag == .newline) {
-            std.debug.print("\n", .{});
-        }
+        const symbol = if (token.tag.lexeme()) |lexeme| lexeme else source[token.loc.start..token.loc.end];
+        std.debug.print("{d}] '{s}'\n", .{
+            token.loc.end,
+            if (token.tag != .newline) symbol else "",
+        });
     }
     tokenizer.deinit();
 }

@@ -7,7 +7,7 @@ const bullet = preload("res://somepathtoscnene")
 some comment
 """
 
-class Send: #some comment
+class Send:
 	var something: int
 
 func _ready() -> void:

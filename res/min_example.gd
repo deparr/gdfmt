@@ -1,2 +1,4 @@
-const a = (100 + 200 +\
-		200 + 300)
+if true:
+	pass
+
+print
