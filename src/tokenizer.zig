@@ -447,6 +447,30 @@ pub const Tokenizer = struct {
         }
 
         const at = self.peek(0);
+
+        // line continuation
+        if (at == '\\') {
+            self.advance(1);
+            if (self.peek(0) == '\r') {
+                self.advance(1);
+            }
+
+            if (self.peek(0) != '\n') {
+                std.debug.print("TODO errors: expected a newline after '\\'\n", .{});
+                token.tag = .@"error";
+                token.loc.end = self.index;
+                return token;
+            }
+            self.advance(1);
+            self.newline(false);
+            self.line_continuation = true;
+            self.skipWhitespace();
+            // TODO godot stores a list of continued line numbers
+            return self.next();
+        }
+
+        self.line_continuation = false;
+
         switch (at) {
             'r' => token.tag = if (self.peek(1) == '\'' or self.peek(1) == '"')
                 self.string()
