@@ -1,7 +1,7 @@
 const std = @import("std");
-const tlib = @import("tokenizer.zig");
-const Tokenizer = tlib.Tokenizer;
-const Token = tlib.Token;
+const gdscript = @import("gdscript.zig");
+const Lexer = gdscript.Lexer;
+const Token = gdscript.Token;
 const zd = @import("zd");
 
 pub fn main() !void {
@@ -15,11 +15,11 @@ pub fn main() !void {
     defer gpa.free(source);
     std.debug.print("{s}{{ .len = {d} }}\n", .{ source, source.len });
 
-    var tokenizer = try Tokenizer.init(source, gpa);
-    while (!tokenizer.sent_eof) {
-        const token = tokenizer.next();
-        std.debug.print(".{s} at[{d}:", .{
-            @tagName(token.tag),
+    var lexer = try Lexer.init(source, gpa);
+    while (true) {
+        const token = lexer.next();
+        std.debug.print(".{t} at[{d}:", .{
+            token.tag,
             token.loc.start,
         });
         const symbol = if (token.tag.lexeme()) |lexeme| lexeme else source[token.loc.start..token.loc.end];
@@ -27,10 +27,11 @@ pub fn main() !void {
             token.loc.end,
             if (token.tag != .newline) symbol else "",
         });
-    }
-    tokenizer.deinit();
-}
 
-test {
-    _ = tlib;
+        if (token.tag == .eof) break;
+    }
+    for (lexer.errors.items) |err| {
+        std.debug.print("{t} @ {any}\n", .{ err.kind, err.loc });
+    }
+    lexer.deinit();
 }
