@@ -619,6 +619,7 @@ pub const Lexer = struct {
         if (token.tag.lexeme()) |lexeme| {
             self.advance(@intCast(lexeme.len));
         } else if (token.tag == .invalid) {
+            std.debug.print("Potenial lexer bug got .invalid token at {d}:{d} (off: {d})\n", .{ self.line, self.column, self.index });
             self.advance(1);
         }
         token.loc.end = self.index;
@@ -832,6 +833,9 @@ pub const Lexer = struct {
     // TODO unicode
     fn ident(self: *Lexer) Token.Tag {
         var end = self.index + 1;
+        // TODO dont call advance here because we have both variable and fixed
+        // length tokens here. the keywords increment index based on their tag,
+        // not as they are lexed
         while (true) {
             switch (self.source[end]) {
                 '_', 'A'...'Z', 'a'...'z', '0'...'9' => end += 1,
@@ -847,12 +851,14 @@ pub const Lexer = struct {
         } else if (strcmp(literal, "true") or strcmp(literal, "false") or strcmp(literal, "null")) {
             tag = .literal;
             self.index = end;
+            self.column += len;
             // ident is actually a keyword
         } else if (Token.getKeyword(literal)) |keyword| {
             tag = keyword;
         } else {
             tag = .identifier;
             self.index = end;
+            self.column += len;
         }
 
         return tag;
@@ -861,14 +867,13 @@ pub const Lexer = struct {
     // TODO unicode
     // TODO merge with ident ?
     fn annotation(self: *Lexer) Token.Tag {
-        var end = self.index + 1;
+        self.advance(1);
         while (true) {
-            switch (self.source[end]) {
-                '_', 'A'...'Z', 'a'...'z', '0'...'9' => end += 1,
+            switch (self.peek(0)) {
+                '_', 'A'...'Z', 'a'...'z', '0'...'9' => self.advance(1),
                 else => break,
             }
         }
-        self.index = end;
         return .annotation;
     }
 

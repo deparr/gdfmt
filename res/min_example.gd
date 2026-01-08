@@ -1,4 +1,1 @@
-if true:
-	pass
-
-print
+@tool @icon("res://someicon.png")

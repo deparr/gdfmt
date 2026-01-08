@@ -17,15 +17,30 @@ errors: []const Error,
 pub const TokenIndex = u32;
 pub const ByteOffset = u32;
 
+
+// TODO includes the token end because I need to be able to get token slices
+// during parsing (eg annotations). I would just retokenize single tokens on
+// demand but lexing needs an allocator for indentation.
+//
+// This is definitely solvable, but im not sure I want to do it right now
 pub const TokenList = std.MultiArrayList(struct {
     tag: Token.Tag,
     start: ByteOffset,
+    end: ByteOffset,
 });
 pub const NodeList = std.MultiArrayList(Node);
 
+pub fn deinit(tree: *Ast, gpa: Allocator) void {
+    tree.tokens.deinit(gpa);
+    tree.nodes.deinit(gpa);
+    gpa.free(tree.extra_data);
+    gpa.free(tree.errors);
+    tree.* = undefined;
+}
+
 pub fn parse(gpa: Allocator, source: [:0]const u8) Allocator.Error!Ast {
     var tokens: Ast.TokenList = .empty;
-    defer tokens.deinit(gpa); // actually a no-op since we call toOwnedSlice in return
+    defer tokens.deinit(gpa); // this is a no-op when returning without errors
     // todo zig has an 8:1 avg token ratio
     // gdscript should have much more due to indent tokens
     // but also less due to fewer braces/parens ??
@@ -33,11 +48,13 @@ pub fn parse(gpa: Allocator, source: [:0]const u8) Allocator.Error!Ast {
     try tokens.ensureTotalCapacity(gpa, estimated_token_count);
 
     var lexer = try Lexer.init(source, gpa);
+    defer lexer.deinit();
     while (true) {
         const token = lexer.next();
         try tokens.append(gpa, .{
             .tag = token.tag,
             .start = token.loc.start,
+            .end = token.loc.end,
         });
         if (token.tag == .eof) break;
     }
@@ -52,8 +69,7 @@ pub fn parse(gpa: Allocator, source: [:0]const u8) Allocator.Error!Ast {
         .extra_data = .empty,
         .scratch = .empty,
     };
-    // actually a no-op since we call toOwnedSlice in return
-    defer parser.errors.deinit(gpa);
+    defer parser.errors.deinit(gpa); // this is a no-op if we return without errors
     defer parser.nodes.deinit(gpa);
     defer parser.extra_data.deinit(gpa);
     defer parser.scratch.deinit(gpa);
@@ -83,8 +99,10 @@ pub fn parse(gpa: Allocator, source: [:0]const u8) Allocator.Error!Ast {
 pub const Node = struct {
     tag: Tag,
     main_token: TokenIndex,
+    data: Data,
 
     pub const Tag = enum {
+        root,
         annotation,
         array,
         assert,
@@ -131,6 +149,9 @@ pub const Node = struct {
         root = 0,
         invalid = std.math.maxInt(u32),
         _,
+    };
+
+    pub const Data = union(enum) {
     };
 };
 
