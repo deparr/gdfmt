@@ -17,8 +17,8 @@ fn tokenTag(self: *const Parse, token_index: TokenIndex) Token.Tag {
     return self.tokens.items(.tag)[token_index];
 }
 
-fn tokenStart(p: *const Parse, token_index: TokenIndex) Ast.ByteOffset {
-    return p.tokens.items(.start)[token_index];
+fn tokenStart(self: *const Parse, token_index: TokenIndex) Ast.ByteOffset {
+    return self.tokens.items(.start)[token_index];
 }
 
 fn tokenSlice(self: *const Parse, token_index: TokenIndex) []const u8 {
@@ -27,16 +27,16 @@ fn tokenSlice(self: *const Parse, token_index: TokenIndex) []const u8 {
     return self.source[start..end];
 }
 
-fn nodeTag(p: *const Parse, node: Node.Index) Node.Tag {
-    return p.nodes.items(.tag)[@intFromEnum(node)];
+fn nodeTag(self: *const Parse, node: Node.Index) Node.Tag {
+    return self.nodes.items(.tag)[@intFromEnum(node)];
 }
 
-fn nodeMainToken(p: *const Parse, node: Node.Index) TokenIndex {
-    return p.nodes.items(.main_token)[@intFromEnum(node)];
+fn nodeMainToken(self: *const Parse, node: Node.Index) TokenIndex {
+    return self.nodes.items(.main_token)[@intFromEnum(node)];
 }
 
-fn nodeData(p: *const Parse, node: Node.Index) Node.Data {
-    return p.nodes.items(.data)[@intFromEnum(node)];
+fn nodeData(self: *const Parse, node: Node.Index) Node.Data {
+    return self.nodes.items(.data)[@intFromEnum(node)];
 }
 
 pub fn parseRoot(self: *Parse) !void {
@@ -113,12 +113,19 @@ fn nextToken(self: *Parse) TokenIndex {
 }
 
 const validAnnotations = std.StaticStringMap(AnnotationInfo.Target).initComptime(.{
-    .{ "export", .variable },
+    // script
     .{ "icon", .script },
     .{ "tool", .script },
-    .{ "abstract", .script },
     .{ "static_unload", .script },
+    .{ "abstract", .script },
+    // export
+    .{ "export", .variable },
+    .{ "export_enum", .variable },
+    .{ "export_file", .variable },
+    
+    .{ "onready", .variable },
 });
+
 
 const Parse = @This();
 const std = @import("std");
