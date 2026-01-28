@@ -120,13 +120,13 @@ const ForNode = struct {
 
 const FunctionNode = struct {
     identifier: *IdentifierNode,
-    parameters: []*ParemeterNode,
+    parameters: []*ParameterNode,
     rest_parameter: *ParameterNode,
     return_type: *TypeNode,
     body: *SuiteNode,
     is_abstract: bool,
     is_static: bool,
-    source_lambda: *LabmdaNode,
+    source_lambda: *LambdaNode,
     default_arg_values: []Variant,
 };
 

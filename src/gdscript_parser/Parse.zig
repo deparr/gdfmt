@@ -64,6 +64,18 @@ pub fn parseRoot(self: *Parse) !void {
     //     try p.warnExpected(.eof);
     // }
     // p.nodes.items(.data)[0] = .{ .extra_range = root_decls };
+
+
+}
+
+// fn parseRootClass(self: *Parse) !Node.Index {
+// }
+
+
+fn parseExprPrecendence(self: *Parse) !Node.Index {
+}
+
+fn parseExpr(self: *Parse, precedence: i32) !Node.Index {
 }
 
 fn parseAnnotation(self: *Parse) !Node.Index {
@@ -71,7 +83,7 @@ fn parseAnnotation(self: *Parse) !Node.Index {
 
     const kind = self.tokenSlice(self.tok_i);
     std.debug.print("anno kind {s}\n" , .{ kind });
-    assert(kind[0] == '@');
+    // skip leading '@'
     if (validAnnotations.get(kind[1..])) |_| {
         return try self.addNode(.{
             .tag = .annotation,
