@@ -11,16 +11,23 @@ pub fn main() !void {
 
     const source = try std.fs.cwd().readFileAllocOptions(gpa, args[1], 1 << 20, null, .@"1", 0);
     defer gpa.free(source);
-    std.debug.print("{s}\n", .{ source });
+    std.debug.print("{s}\n", .{source});
 
     var ast = try gdscript.Ast.parse(gpa, source);
-    for (ast.tokens.items(.tag)) |tag| {
-        if (tag == .newline or tag == .eof) std.debug.print("\n", .{})
-        else std.debug.print("{t} ", .{ tag });
-    }
+    // for (ast.tokens.items(.tag)) |tag| {
+    //     if (tag == .newline or tag == .eof) std.debug.print("\n", .{})
+    //     else std.debug.print("{t} ", .{ tag });
+    // }
 
-    for (ast.nodes.items(.tag)) |node| {
-        std.debug.print("{t}\n", .{ node });
+    for (ast.nodes.items(.tag), ast.nodes.items(.data)) |tag, data| {
+        std.debug.print("{t} ", .{tag});
+        switch (data) {
+            .annotation => |anno| {
+                const tok = ast.tokens.get(anno.name);
+                std.debug.print("{s} {d}\n", .{ source[tok.start..tok.end], anno.arguments });
+            },
+            else => {},
+        }
     }
     defer ast.deinit(gpa);
 }

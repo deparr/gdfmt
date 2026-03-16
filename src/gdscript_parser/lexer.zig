@@ -326,7 +326,7 @@ pub const Token = struct {
         }
 
         pub fn isValidNodeName(self: Tag) bool {
-            return switch (self.tag) {
+            return switch (self) {
                 .identifier,
                 .@"and",
                 .as,

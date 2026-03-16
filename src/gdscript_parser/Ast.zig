@@ -17,7 +17,6 @@ errors: []const Error,
 pub const TokenIndex = u32;
 pub const ByteOffset = u32;
 
-
 // TODO includes the token end because I need to be able to get token slices
 // during parsing (eg annotations). I would just retokenize single tokens on
 // demand but lexing needs an allocator for indentation.
@@ -38,7 +37,7 @@ pub fn deinit(tree: *Ast, gpa: Allocator) void {
     tree.* = undefined;
 }
 
-pub fn parse(gpa: Allocator, source: [:0]const u8) Allocator.Error!Ast {
+pub fn parse(gpa: Allocator, source: [:0]const u8) anyerror!Ast {
     var tokens: Ast.TokenList = .empty;
     defer tokens.deinit(gpa); // this is a no-op when returning without errors
     // todo zig has an 8:1 avg token ratio
@@ -118,7 +117,8 @@ pub const Node = struct {
         @"continue",
         dictionary,
         @"enum",
-        expression, // not sure if I need this
+        enum_value,
+        expression,
         @"for",
         function,
         get_node,
@@ -144,7 +144,6 @@ pub const Node = struct {
         variable,
         @"while",
 
-        /// not in godot's parser
         comment,
         doc_comment,
     };
@@ -158,8 +157,296 @@ pub const Node = struct {
     pub const Data = union(enum) {
         none,
         node: Index,
-        // opt_node: OptionalIndex
+        annotation: Annotation,
+        array: Array,
+        assert: Assert,
+        assignment: Assignment,
+        await: Await,
+        binary_op: BinaryOp,
+        call: Call,
+        cast: Cast,
+        class: Class,
+        constant: Constant,
+        dictionary: Dictionary,
+        @"enum": EnumDecl,
+        enum_value: EnumValue,
+        @"for": ForLoop,
+        function: Function,
+        get_node: GetNode,
+        identifier: Identifier,
+        @"if": If,
+        lambda: Lambda,
+        literal: Literal,
+        match: Match,
+        match_branch: MatchBranch,
+        parameter: Parameter,
+        pattern: Pattern,
+        preload: Preload,
+        @"return": Return,
+        signal: Signal,
+        subscript: Subscript,
+        suite: Suite,
+        ternary_op: Ternary,
+        type: TypeExpr,
+        type_test: TypeTest,
+        unary_op: UnaryOp,
+        variable: Variable,
+        @"while": WhileLoop,
     };
+
+    pub const Array = struct {
+        elements: Index,
+    };
+
+    pub const Assert = struct {
+        condition: Index,
+        message: Index,
+    };
+
+    pub const Assignment = struct {
+        target: Index,
+        value: Index,
+        op: Op,
+        pub const Op = enum {
+            none,
+            add,
+            sub,
+            mul,
+            div,
+            mod,
+            power,
+            shl,
+            shr,
+            bit_and,
+            bit_or,
+            bit_xor,
+        };
+    };
+
+    pub const Await = struct {
+        expression: Index,
+    };
+
+    pub const BinaryOp = struct {
+        lhs: Index,
+        rhs: Index,
+        op: Op,
+        pub const Op = enum {
+            add,
+            sub,
+            mul,
+            div,
+            mod,
+            power,
+            shl,
+            shr,
+            bit_and,
+            bit_or,
+            bit_xor,
+            log_and,
+            log_or,
+            equal,
+            not_equal,
+            less,
+            less_equal,
+            greater,
+            greater_equal,
+            in,
+            not_in,
+            is,
+            not_is,
+        };
+    };
+
+    pub const Call = struct {
+        callee: Index,
+        arguments: Index,
+    };
+
+    pub const Cast = struct {
+        operand: Index,
+        cast_type: Index,
+    };
+
+    pub const Class = struct {
+        name: TokenIndex,
+        extends: Index,
+        members: Index,
+    };
+
+    pub const Constant = struct {
+        name: TokenIndex,
+        type: Index,
+        value: Index,
+    };
+
+    pub const Dictionary = struct {
+        elements: Index,
+    };
+
+    pub const EnumDecl = struct {
+        name: TokenIndex,
+        values: Index,
+    };
+
+    pub const EnumValue = struct {
+        name: TokenIndex,
+        value: Index,
+    };
+
+    pub const ForLoop = struct {
+        variable: TokenIndex,
+        iter: Index,
+        body: Index,
+    };
+
+    pub const Function = struct {
+        name: TokenIndex,
+        params: Index,
+        return_type: Index,
+        body: Index,
+        flags: FunctionFlags,
+        pub const FunctionFlags = packed struct {
+            is_static: bool = false,
+            is_virtual: bool = false,
+            is_override: bool = false,
+            is_const: bool = false,
+            is_async: bool = false,
+            is_export: bool = false,
+            _: u2 = 0,
+        };
+    };
+
+    pub const GetNode = struct {
+        token: TokenIndex,
+    };
+
+    pub const Identifier = struct {
+        token: TokenIndex,
+    };
+
+    pub const If = struct {
+        condition: Index,
+        then_branch: Index,
+        else_branch: Index,
+    };
+
+    pub const Lambda = struct {
+        function: Index,
+    };
+
+    pub const Literal = struct {
+        token: TokenIndex,
+    };
+
+    pub const Match = struct {
+        expression: Index,
+        branches: Index,
+    };
+
+    pub const MatchBranch = struct {
+        patterns: Index,
+        guard: Index,
+        body: Index,
+    };
+
+    pub const Parameter = struct {
+        name: TokenIndex,
+        type: Index,
+        default_value: Index,
+    };
+
+    pub const Pattern = struct {
+        pattern_type: PatternType,
+        value: Index,
+        pub const PatternType = enum {
+            literal,
+            expression,
+            bind,
+            array,
+            dictionary,
+            rest,
+            wildcard,
+        };
+    };
+
+    pub const Preload = struct {
+        path: Index,
+    };
+
+    pub const Return = struct {
+        value: Index,
+    };
+
+    pub const Signal = struct {
+        name: TokenIndex,
+        params: Index,
+    };
+
+    pub const Subscript = struct {
+        base: Index,
+        index: Index,
+    };
+
+    pub const Suite = struct {
+        statements: Index,
+    };
+
+    pub const Ternary = struct {
+        condition: Index,
+        then_expr: Index,
+        else_expr: Index,
+    };
+
+    pub const TypeExpr = struct {
+        main_type: TokenIndex,
+        generic_types: Index,
+        is_nullable: bool = false,
+    };
+
+    pub const TypeTest = struct {
+        operand: Index,
+        test_type: Index,
+    };
+
+    pub const UnaryOp = struct {
+        operand: Index,
+        op: Op,
+        pub const Op = enum {
+            neg,
+            pos,
+            bit_not,
+            log_not,
+        };
+    };
+
+    pub const Variable = struct {
+        name: TokenIndex,
+        type: Index,
+        value: Index,
+        flags: VariableFlags,
+        pub const VariableFlags = packed struct {
+            is_export: bool = false,
+            is_onready: bool = false,
+            is_static: bool = false,
+            is_const: bool = false,
+            is_await: bool = false,
+            setget: bool = false,
+            setter: bool = false,
+            getter: bool = false,
+            _: u2 = 0,
+        };
+    };
+
+    pub const WhileLoop = struct {
+        condition: Index,
+        body: Index,
+    };
+};
+
+pub const Annotation = struct {
+    name: TokenIndex,
+    arguments: Node.Index,
 };
 
 pub const Error = struct {
