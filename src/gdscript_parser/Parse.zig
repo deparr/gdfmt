@@ -169,6 +169,95 @@ fn parseAnnotation(self: *Parse, valid_targets: u32) !Node.Index {
     }
 }
 
+// zig does this not sure if gdscript needs it
+const Assoc = enum {
+    left,
+    none,
+};
+
+const OperInfo = struct {
+    prec: i8,
+    tag: Node.Tag,
+    assoc: Assoc = .left,
+};
+
+
+// binary operater precendence table, higher precendence number binds tighter
+const binop_prec_table = std.enums.directEnumArray(Token.Tag, OperInfo, 0, .{
+    .as = .{ .prec = 10, .tag = .cast },
+
+    .@"or" = .{ .prec = 20, .tag = .bool_or },
+    .@"and" = .{ .prec = 25, .tag = .bool_and },
+
+    .in = .{ .prec = 30, .tag = .in },
+    .not = .{ .prec = 30, .tag = .not_in },
+
+    .equal_equal = .{ .prec = 40, .tag = .equal_equal, .assoc = Assoc.none },
+    .bang_equal = .{ .prec = 40, .tag = .bang_equal, .assoc = Assoc.none },
+    .less = .{ .prec = 40, .tag = .less_than, .assoc = Assoc.none },
+    .greater = .{ .prec = 40, .tag = .greater_than, .assoc = Assoc.none },
+    .less_equal = .{ .prec = 40, .tag = .less_or_equal, .assoc = Assoc.none },
+    .greater_equal = .{ .prec = 40, .tag = .greater_or_equal, .assoc = Assoc.none },
+
+    .ampersand = .{ .prec = 50, .tag = .bit_and },
+    .caret = .{ .prec = 50, .tag = .bit_xor },
+    .pipe = .{ .prec = 50, .tag = .bit_or },
+
+    .less_less = .{ .prec = 60, .tag = .shl },
+    .greater_greater = .{ .prec = 60, .tag = .shr },
+
+    .plus = .{ .prec = 70, .tag = .add },
+    .minus = .{ .prec = 70, .tag = .sub },
+
+    .star = .{ .prec = 80, .tag = .mul },
+    .slash = .{ .prec = 80, .tag = .div },
+    .percent = .{ .prec = 80, .tag = .mod },
+
+    .star_star = .{ .prec = 85, .tag = .power },
+
+    .is = .{ .prec = 90, .tag = .type_test },
+
+    // prec call // suffix expr
+    // prec_attribute // field access // suffix expr
+    // prec_subscript // array access // suffix expr
+    // prec_primary  // unused
+});
+
+fn parseExpr(self: *Parse) Error!?Node.Index {
+    return self.parseExprPrecedence(0);
+}
+
+fn parseExprPrecedence(self: *Parse, min_prec: i32) Error!?Node.Index {
+    assert(min_prec >= 0);
+    const node = try self.parsePrefixExpr() orelse return null;
+    return node;
+}
+
+fn parsePrefixExpr(self: *Parse) Error!?Node.Index {
+    const tag: Node.Tag = switch(self.tokenTag(self.tok_i)) {
+        .not, .bang => .bool_not,
+        .tilde => .bit_not,
+        .minus => .negation,
+        .plus => .positation,
+        .dollar, .percent => .get_node,
+        // await ???
+        // yield ??
+        // paren ??
+        // dict ??
+        // array ??
+        else => return self.parsePrimaryExpr(),
+    };
+    return try self.addNode(.{
+        .tag = tag,
+        .main_token = self.nextToken(),
+        .data = .{ .node = try self.expectPrefixExpr() },
+    });
+}
+
+fn expectPrefixExpr(self: *Parse)  Error!Node.Index {
+    return try self.parsePrefixExpr() orelse return self.fail(.expected_prefix_expr);
+}
+
 fn addNode(p: *Parse, elem: Ast.Node) Allocator.Error!Node.Index {
     const result: Node.Index = @enumFromInt(p.nodes.len);
     try p.nodes.append(p.gpa, elem);
@@ -186,13 +275,34 @@ fn warn(self: *Parse, msg: Ast.Error) error{OutOfMemory}!void {
 }
 
 fn warnExpected(self: *Parse, expected_tag: Token.Tag) error{OutOfMemory}!void {
-    // zig branchHint(.cold) 's the warn paths
+    @branchHint(.cold);
     try self.warn(.{
         .tag = .expected_token,
         .token = self.tok_i,
         .extra = .{ .expected_tag = expected_tag },
     });
 }
+
+fn fail(p: *Parse, tag: Ast.Error.Tag) error{ ParseError, OutOfMemory } {
+    @branchHint(.cold);
+    return p.failMsg(.{ .tag = tag, .token = p.tok_i });
+}
+
+fn failExpected(p: *Parse, expected_token: Token.Tag) error{ ParseError, OutOfMemory } {
+    @branchHint(.cold);
+    return p.failMsg(.{
+        .tag = .expected_token,
+        .token = p.tok_i,
+        .extra = .{ .expected_tag = expected_token },
+    });
+}
+
+fn failMsg(p: *Parse, msg: Ast.Error) error{ ParseError, OutOfMemory } {
+    @branchHint(.cold);
+    try p.warn(msg);
+    return error.ParseError;
+}
+
 
 const Parse = @This();
 const std = @import("std");
