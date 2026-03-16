@@ -174,5 +174,47 @@ pub const Error = struct {
         missing_newline_after_string_comment,
         expected_token,
         unexpected_tag_class_body,
+        invalid_annotation,
     };
 };
+
+pub const AnnotationTarget = enum(u32) {
+        none = 0,
+        script = 1,
+        class = 1 << 2,
+        variable = 1 << 3,
+        constant = 1 << 4,
+        signal = 1 << 5,
+        function = 1 << 6,
+        statement = 1 << 7,
+        standalone = 1 << 8,
+
+        pub const class_level = @intFromEnum(AnnotationTarget.class)
+            | @intFromEnum(AnnotationTarget.variable)
+            | @intFromEnum(AnnotationTarget.constant)
+            | @intFromEnum(AnnotationTarget.signal)
+            | @intFromEnum(AnnotationTarget.function);
+
+        pub fn group(members: []const AnnotationTarget) u32 {
+            var res: u32 = 0;
+            for (members) |m| {
+                res |= @intFromEnum(m);
+            }
+            return res;
+        }
+};
+
+pub const validAnnotations = std.StaticStringMap(AnnotationTarget).initComptime(.{
+    // script
+    .{ "icon", .script },
+    .{ "tool", .script },
+    .{ "static_unload", .script },
+    .{ "abstract", .script },
+    // export
+    .{ "export", .variable },
+    .{ "export_enum", .variable },
+    .{ "export_file", .variable },
+
+    .{ "onready", .variable },
+});
+

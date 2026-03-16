@@ -67,15 +67,35 @@ pub fn parseRoot(self: *Parse) !void {
     // parse a class body, the same as for a child class
     // expect eof
     //
-    // var can_have_classname_or_extends = true;
-    var token = self.nextToken();
-    // FIXME: not sure about this
-    while (self.tokenTag(token) != .eof) : (token = self.nextToken()) {
+    var can_have_classname_or_extends = true;
+    can_have_classname_or_extends = false;
+    while (self.tokenTag(self.tok_i) != .eof) {
+        const token = self.tok_i;
         const tag = self.tokenTag(self.tok_i);
-        std.debug.print("{t} | ", .{tag});
         switch (tag) {
             .annotation => {
-                _ = try self.parseAnnotation();
+                const anno_idx = try self.parseAnnotation(AnnotationTarget.group(&.{.script, .standalone}) | AnnotationTarget.class_level);
+                const anno_tok = self.nodeMainToken(anno_idx);
+                const anno_name = self.tokenSlice(anno_tok);
+                const anno_target = validAnnotations.get(anno_name) orelse {
+                    try self.warn(.{
+                        .tag = .invalid_annotation,
+                        .token = anno_tok,
+                    });
+                    return Error.ParseError;
+                };
+
+                switch (anno_target) {
+                    .class => {
+                        // TODO at this point we don't know if anno applies to
+                        // root or inner class, modules/gdscript/gdscript_parser.cpp:720
+                    },
+                    .script => {
+                    },
+                    .standalone => {
+                    },
+                    else => {},
+                }
             },
             .literal => {
                 const slice = self.tokenSlice(self.tok_i);
@@ -94,7 +114,7 @@ pub fn parseRoot(self: *Parse) !void {
                         .tag = .missing_newline_after_string_comment,
                     });
                 }
-                try self.addNode(.{
+                _ = try self.addNode(.{
                     .tag = .comment,
                     .main_token = token,
                     .data = .{ .none = {} },
@@ -102,7 +122,7 @@ pub fn parseRoot(self: *Parse) !void {
             },
             .comment => {
                 // try self.eatCommentBlock();
-                try self.addNode(.{
+                _ = try self.addNode(.{
                     .tag = .comment,
                     .main_token = token,
                     .data = .{ .none = {} },
@@ -129,7 +149,10 @@ pub fn parseRoot(self: *Parse) !void {
 // fn parseExpr(self: *Parse, precedence: i32) !Node.Index {
 // }
 
-fn parseAnnotation(self: *Parse) !Node.Index {
+fn parseAnnotation(self: *Parse, valid_targets: u32) !Node.Index {
+    if (valid_targets == 0) {
+        return error.ParseError;
+    }
     assert(self.tokenTag(self.tok_i) == .annotation);
 
     const kind = self.tokenSlice(self.tok_i);
@@ -152,23 +175,6 @@ fn addNode(p: *Parse, elem: Ast.Node) Allocator.Error!Node.Index {
     return result;
 }
 
-const AnnotationInfo = struct {
-    target: Target = .none,
-
-    const Target = enum {
-        none,
-        script,
-        class,
-        variable,
-        constant,
-        signal,
-        function,
-        statement,
-        standalone,
-        class_level,
-    };
-};
-
 fn nextToken(self: *Parse) TokenIndex {
     const result = self.tok_i;
     self.tok_i += 1;
@@ -188,25 +194,13 @@ fn warnExpected(self: *Parse, expected_tag: Token.Tag) error{OutOfMemory}!void {
     });
 }
 
-const validAnnotations = std.StaticStringMap(AnnotationInfo.Target).initComptime(.{
-    // script
-    .{ "icon", .script },
-    .{ "tool", .script },
-    .{ "static_unload", .script },
-    .{ "abstract", .script },
-    // export
-    .{ "export", .variable },
-    .{ "export_enum", .variable },
-    .{ "export_file", .variable },
-
-    .{ "onready", .variable },
-});
-
 const Parse = @This();
 const std = @import("std");
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const Ast = @import("Ast.zig");
+const validAnnotations = Ast.validAnnotations;
+const AnnotationTarget = Ast.AnnotationTarget;
 const Node = Ast.Node;
 const AstError = Ast.Error;
 const TokenIndex = Ast.TokenIndex;
