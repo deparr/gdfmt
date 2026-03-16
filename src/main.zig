@@ -23,7 +23,8 @@ pub fn main() !void {
         std.debug.print("{t} ", .{tag});
         switch (data) {
             .annotation => |anno| {
-                const tok = ast.tokens.get(anno.name);
+                const arg_node = ast.nodes.get(@intFromEnum(anno.arguments));
+                const tok = ast.tokens.get(arg_node.main_token);
                 std.debug.print("{s} {d}\n", .{ source[tok.start..tok.end], anno.arguments });
             },
             else => {},

@@ -520,6 +520,7 @@ fn tokenToBinaryOp(tag: Token.Tag) Node.BinaryOp.Op {
         .greater_equal => .greater_equal,
         .in => .in,
         .is => .is,
+        // this doesn't seem right?
         else => .add,
     };
 }
@@ -1175,7 +1176,6 @@ fn parseVariable(self: *Parse) Error!Node.Index {
 }
 
 fn parseAnnotation(self: *Parse) Error!Node.Index {
-    const annot_tok = self.nextToken();
     const name_tok = self.nextToken();
 
     var args: Node.Index = .invalid;
@@ -1195,9 +1195,8 @@ fn parseAnnotation(self: *Parse) Error!Node.Index {
 
     return try self.addNode(.{
         .tag = .annotation,
-        .main_token = annot_tok,
+        .main_token = name_tok,
         .data = .{ .annotation = .{
-            .name = name_tok,
             .arguments = args,
         } },
     });

@@ -445,7 +445,6 @@ pub const Node = struct {
 };
 
 pub const Annotation = struct {
-    name: TokenIndex,
     arguments: Node.Index,
 };
 
