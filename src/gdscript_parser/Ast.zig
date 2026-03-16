@@ -143,6 +143,10 @@ pub const Node = struct {
         unary_op,
         variable,
         @"while",
+
+        /// not in godot's parser
+        comment,
+        doc_comment,
     };
 
     pub const Index = enum(u32) {
@@ -152,6 +156,9 @@ pub const Node = struct {
     };
 
     pub const Data = union(enum) {
+        none,
+        node: Index,
+        // opt_node: OptionalIndex
     };
 };
 
@@ -160,8 +167,12 @@ pub const Error = struct {
     token: TokenIndex,
     extra: union {
         none: void,
-        exptected_tag: Token.Tag,
+        expected_tag: Token.Tag,
     } = .{ .none = {} },
 
-    pub const Tag = enum {};
+    pub const Tag = enum {
+        missing_newline_after_string_comment,
+        expected_token,
+        unexpected_tag_class_body,
+    };
 };

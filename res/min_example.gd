@@ -1,1 +1,3 @@
-@tool @icon("res://someicon.png")
+"""astring"""
+@tool
+@icon("res://someicon.png")
