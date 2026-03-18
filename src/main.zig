@@ -11,16 +11,28 @@ pub fn main() !void {
 
     const source = try std.fs.cwd().readFileAllocOptions(gpa, args[1], 1 << 20, null, .@"1", 0);
     defer gpa.free(source);
-    std.debug.print("{s}\n", .{ source });
+    std.debug.print("{s}\n", .{source});
 
     var ast = try gdscript.Ast.parse(gpa, source);
-    for (ast.tokens.items(.tag)) |tag| {
-        if (tag == .newline or tag == .eof) std.debug.print("\n", .{})
-        else std.debug.print("{t} ", .{ tag });
-    }
-
-    for (ast.nodes.items(.tag)) |node| {
-        std.debug.print("{t}\n", .{ node });
+    if (ast.errors.len > 0) {
+        std.debug.print("Errors:\n", .{});
+        for (ast.errors) |err| {
+            std.debug.print("{t} @: {t}\n", .{err.tag, ast.tokens.items(.tag)[err.token]});
+        }
+    } else {
+        for (0..ast.nodes.len) |i| {
+            const node = ast.nodes.get(i);
+            const data = switch(node.data) {
+                .node => |n| n,
+                .none => null,
+            };
+            if (data) |n| {
+                const other = ast.nodes.get(@intFromEnum(n));
+                std.debug.print("({t} {t}) ", .{ node.tag, other.tag });
+            } else {
+                std.debug.print("{t} ", .{ node.tag, });
+            }
+        }
     }
     defer ast.deinit(gpa);
 }

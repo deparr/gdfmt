@@ -80,7 +80,10 @@ pub fn parse(gpa: Allocator, source: [:0]const u8) Allocator.Error!Ast {
     const estimated_node_count = (tokens.len + 2) / 2;
     try parser.nodes.ensureTotalCapacity(gpa, estimated_node_count);
 
-    try parser.parseRoot();
+    parser.parseRoot() catch |err| switch(err) {
+        error.ParseError => {},
+        error.OutOfMemory => return error.OutOfMemory,
+    };
 
     const extra_data = try parser.extra_data.toOwnedSlice(gpa);
     errdefer gpa.free(extra_data);
@@ -99,7 +102,7 @@ pub fn parse(gpa: Allocator, source: [:0]const u8) Allocator.Error!Ast {
 pub const Node = struct {
     tag: Tag,
     main_token: TokenIndex,
-    data: Data,
+    data: Data = .none,
 
     pub const Tag = enum {
         root,
@@ -137,6 +140,7 @@ pub const Node = struct {
         bit_and,
         bit_xor,
         bit_or,
+        bit_not,
         bool_and,
         bool_or,
         bool_not,
@@ -146,6 +150,9 @@ pub const Node = struct {
         in,
         negation,
         positation, // todo ??????
+
+        string_literal,
+        number_literal,
 
         @"break",
         breakpoint,
@@ -163,7 +170,6 @@ pub const Node = struct {
         identifier,
         @"if",
         lambda,
-        literal,
         match,
         match_branch,
         parameter,
@@ -196,7 +202,7 @@ pub const Node = struct {
     pub const Data = union(enum) {
         none,
         node: Index,
-        // opt_node: OptionalIndex
+        // opt_node: OptionalIndex,
     };
 };
 
@@ -214,6 +220,7 @@ pub const Error = struct {
         unexpected_tag_class_body,
         invalid_annotation,
         expected_prefix_expr,
+        invalid_prefix_operand,
     };
 };
 

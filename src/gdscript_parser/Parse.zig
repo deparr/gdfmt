@@ -50,15 +50,18 @@ pub fn parseRoot(self: *Parse) !void {
         .data = undefined,
     });
 
-    var state: enum {
-        /// at beginning or still parsing script-level annotations
-        script,
-        /// have not encountered fields / decls yet; allowed to have class_name
-        /// or extends
-        class_head,
-        /// parsing class fields and decls
-        class_body,
-    } = .script;
+    const prefix = try self.parsePrefixExpr();
+    self.nodes.items(.data)[0] = .{ .node = prefix.? };
+
+    // var state: enum {
+    //     /// at beginning or still parsing script-level annotations
+    //     script,
+    //     /// have not encountered fields / decls yet; allowed to have class_name
+    //     /// or extends
+    //     class_head,
+    //     /// parsing class fields and decls
+    //     class_body,
+    // } = .script;
 
     // parse leading anootations and comments
     // parse class_name / extends and comments
@@ -67,77 +70,77 @@ pub fn parseRoot(self: *Parse) !void {
     // parse a class body, the same as for a child class
     // expect eof
     //
-    var can_have_classname_or_extends = true;
-    can_have_classname_or_extends = false;
-    while (self.tokenTag(self.tok_i) != .eof) {
-        const token = self.tok_i;
-        const tag = self.tokenTag(self.tok_i);
-        switch (tag) {
-            .annotation => {
-                const anno_idx = try self.parseAnnotation(AnnotationTarget.group(&.{.script, .standalone}) | AnnotationTarget.class_level);
-                const anno_tok = self.nodeMainToken(anno_idx);
-                const anno_name = self.tokenSlice(anno_tok);
-                const anno_target = validAnnotations.get(anno_name) orelse {
-                    try self.warn(.{
-                        .tag = .invalid_annotation,
-                        .token = anno_tok,
-                    });
-                    return Error.ParseError;
-                };
-
-                switch (anno_target) {
-                    .class => {
-                        // TODO at this point we don't know if anno applies to
-                        // root or inner class, modules/gdscript/gdscript_parser.cpp:720
-                    },
-                    .script => {
-                    },
-                    .standalone => {
-                    },
-                    else => {},
-                }
-            },
-            .literal => {
-                const slice = self.tokenSlice(self.tok_i);
-                if (slice[0] != '\'' and slice[0] != '"') {
-                    try self.warn(.{ .tag = .unexpected_tag_class_body, .token = self.tok_i });
-                    // FIXME: this doesn't *have* to skip over class head
-                    state = .class_body;
-                }
-
-                const next_token = self.nextToken();
-                // FIXME: This should be recoverable / ignoreable by the
-                // formatter
-                if (self.tokenTag(next_token) != .newline) {
-                    try self.warn(.{
-                        .token = token,
-                        .tag = .missing_newline_after_string_comment,
-                    });
-                }
-                _ = try self.addNode(.{
-                    .tag = .comment,
-                    .main_token = token,
-                    .data = .{ .none = {} },
-                });
-            },
-            .comment => {
-                // try self.eatCommentBlock();
-                _ = try self.addNode(.{
-                    .tag = .comment,
-                    .main_token = token,
-                    .data = .{ .none = {} },
-                });
-            },
-            .newline => std.debug.print("hit .newline in rootclass\n", .{}),
-            else => break,
-        }
-    }
-
-    // indentation ???
-    if (self.tokenTag(self.tok_i) != .eof) {
-        try self.warnExpected(.eof);
-    }
-
+    // var can_have_classname_or_extends = true;
+    // can_have_classname_or_extends = false;
+    // while (self.tokenTag(self.tok_i) != .eof) {
+    //     const token = self.tok_i;
+    //     const tag = self.tokenTag(self.tok_i);
+    //     switch (tag) {
+    //         .annotation => {
+    //             const anno_idx = try self.parseAnnotation(AnnotationTarget.group(&.{.script, .standalone}) | AnnotationTarget.class_level);
+    //             const anno_tok = self.nodeMainToken(anno_idx);
+    //             const anno_name = self.tokenSlice(anno_tok);
+    //             const anno_target = validAnnotations.get(anno_name) orelse {
+    //                 try self.warn(.{
+    //                     .tag = .invalid_annotation,
+    //                     .token = anno_tok,
+    //                 });
+    //                 return Error.ParseError;
+    //             };
+    //
+    //             switch (anno_target) {
+    //                 .class => {
+    //                     // TODO at this point we don't know if anno applies to
+    //                     // root or inner class, modules/gdscript/gdscript_parser.cpp:720
+    //                 },
+    //                 .script => {
+    //                 },
+    //                 .standalone => {
+    //                 },
+    //                 else => {},
+    //             }
+    //         },
+    //         .literal => {
+    //             const slice = self.tokenSlice(self.tok_i);
+    //             if (slice[0] != '\'' and slice[0] != '"') {
+    //                 try self.warn(.{ .tag = .unexpected_tag_class_body, .token = self.tok_i });
+    //                 // FIXME: this doesn't *have* to skip over class head
+    //                 state = .class_body;
+    //             }
+    //
+    //             const next_token = self.nextToken();
+    //             // FIXME: This should be recoverable / ignoreable by the
+    //             // formatter
+    //             if (self.tokenTag(next_token) != .newline) {
+    //                 try self.warn(.{
+    //                     .token = token,
+    //                     .tag = .missing_newline_after_string_comment,
+    //                 });
+    //             }
+    //             _ = try self.addNode(.{
+    //                 .tag = .comment,
+    //                 .main_token = token,
+    //                 .data = .{ .none = {} },
+    //             });
+    //         },
+    //         .comment => {
+    //             // try self.eatCommentBlock();
+    //             _ = try self.addNode(.{
+    //                 .tag = .comment,
+    //                 .main_token = token,
+    //                 .data = .{ .none = {} },
+    //             });
+    //         },
+    //         .newline => std.debug.print("hit .newline in rootclass\n", .{}),
+    //         else => break,
+    //     }
+    // }
+    //
+    // // indentation ???
+    // if (self.tokenTag(self.tok_i) != .eof) {
+    //     try self.warnExpected(.eof);
+    // }
+    //
     // const root_members = try p.parseContainerMembers();
     // const root_decls = try root_members.toSpan(p);
     // p.nodes.items(.data)[0] = .{ .extra_range = root_decls };
@@ -180,7 +183,6 @@ const OperInfo = struct {
     tag: Node.Tag,
     assoc: Assoc = .left,
 };
-
 
 // binary operater precendence table, higher precendence number binds tighter
 const binop_prec_table = std.enums.directEnumArray(Token.Tag, OperInfo, 0, .{
@@ -234,7 +236,7 @@ fn parseExprPrecedence(self: *Parse, min_prec: i32) Error!?Node.Index {
 }
 
 fn parsePrefixExpr(self: *Parse) Error!?Node.Index {
-    const tag: Node.Tag = switch(self.tokenTag(self.tok_i)) {
+    const tag: Node.Tag = switch (self.tokenTag(self.tok_i)) {
         .not, .bang => .bool_not,
         .tilde => .bit_not,
         .minus => .negation,
@@ -254,8 +256,34 @@ fn parsePrefixExpr(self: *Parse) Error!?Node.Index {
     });
 }
 
-fn expectPrefixExpr(self: *Parse)  Error!Node.Index {
+fn expectPrefixExpr(self: *Parse) Error!Node.Index {
     return try self.parsePrefixExpr() orelse return self.fail(.expected_prefix_expr);
+}
+
+fn parsePrimaryExpr(self: *Parse) Error!?Node.Index {
+    switch (self.tokenTag(self.tok_i)) {
+        .identifier,
+        .self,
+        // .super, // not sure about this
+        => return try self.addNode(.{
+            .tag = .identifier,
+            .main_token = self.nextToken(),
+        }),
+        .literal => {
+            const tok = self.tokenSlice(self.tok_i);
+            if (tok[0] == '"' or tok[0] == '\'') {
+                // TODO minor hack, though it seems all prefix operate on numbers
+                return self.fail(.invalid_prefix_operand);
+            }
+            return try self.addNode(.{
+                .tag = .number_literal,
+                .main_token = self.nextToken(),
+            });
+        },
+        else => @panic("faileur"),
+    }
+
+    return null;
 }
 
 fn addNode(p: *Parse, elem: Ast.Node) Allocator.Error!Node.Index {
@@ -302,7 +330,6 @@ fn failMsg(p: *Parse, msg: Ast.Error) error{ ParseError, OutOfMemory } {
     try p.warn(msg);
     return error.ParseError;
 }
-
 
 const Parse = @This();
 const std = @import("std");
