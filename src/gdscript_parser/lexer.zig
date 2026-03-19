@@ -325,8 +325,21 @@ pub const Token = struct {
             };
         }
 
-        pub fn isValidNodeName(self: Tag) bool {
-            return switch (self.tag) {
+        pub fn isIdentifier(self: Tag) bool {
+            return switch (self) {
+                .identifier,
+                .match, // used in String.match()
+                .when,
+                .pi, // allow constants to be used as idents
+                .@"const",
+                .nan,
+                .tau => true,
+                else => false,
+            };
+        }
+
+        pub fn isNodeName(self: Tag) bool {
+            return switch (self) {
                 .identifier,
                 .@"and",
                 .as,

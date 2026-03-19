@@ -14,6 +14,10 @@ pub fn main() !void {
     std.debug.print("{s}\n", .{source});
 
     var ast = try gdscript.Ast.parse(gpa, source);
+    for (0..ast.tokens.len) |i| {
+        std.debug.print("{t} ", .{ ast.tokens.items(.tag)[i] });
+    }
+    std.debug.print("\n", .{});
     if (ast.errors.len > 0) {
         std.debug.print("Errors:\n", .{});
         for (ast.errors) |err| {
@@ -22,16 +26,7 @@ pub fn main() !void {
     } else {
         for (0..ast.nodes.len) |i| {
             const node = ast.nodes.get(i);
-            const data = switch(node.data) {
-                .node => |n| n,
-                .none => null,
-            };
-            if (data) |n| {
-                const other = ast.nodes.get(@intFromEnum(n));
-                std.debug.print("({t} {t}) ", .{ node.tag, other.tag });
-            } else {
-                std.debug.print("{t} ", .{ node.tag, });
-            }
+            std.debug.print("{f} ", .{node});
         }
     }
     defer ast.deinit(gpa);

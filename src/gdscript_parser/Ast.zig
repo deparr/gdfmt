@@ -102,7 +102,7 @@ pub fn parse(gpa: Allocator, source: [:0]const u8) Allocator.Error!Ast {
 pub const Node = struct {
     tag: Tag,
     main_token: TokenIndex,
-    data: Data = .none,
+    data: Data,
 
     pub const Tag = enum {
         root,
@@ -149,10 +149,12 @@ pub const Node = struct {
         not_in,
         in,
         negation,
-        positation, // todo ??????
+        numeric_identity, // todo ??????
 
         string_literal,
         number_literal,
+
+        grouped_expression,
 
         @"break",
         breakpoint,
@@ -163,7 +165,6 @@ pub const Node = struct {
         @"continue",
         dictionary,
         @"enum",
-        expression, // not sure if I need this
         @"for",
         function,
         get_node,
@@ -193,6 +194,21 @@ pub const Node = struct {
         doc_comment,
     };
 
+    pub fn format(self: Node, writer: *std.Io.Writer,) std.Io.Writer.Error!void {
+        try writer.print("({t}", .{ self.tag });
+        switch (self.data) {
+            .node => |n| {
+                if (n != .root) {
+                    try writer.print(" :node ({d})", .{ n });
+                }
+            },
+            .token => |t| try writer.print(" :token ({d})", .{ t }),
+            .node_and_token => |nt| try writer.print(" :node ({d}) :token ({d})", .{ nt.@"0", nt.@"1"}),
+            .node_and_node => |nn| try writer.print(" :node ({d}) :node ({d})", .{ nn.@"0", nn.@"1" }),
+        }
+        try writer.writeByte(')');
+    }
+
     pub const Index = enum(u32) {
         root = 0,
         invalid = std.math.maxInt(u32),
@@ -200,8 +216,10 @@ pub const Node = struct {
     };
 
     pub const Data = union(enum) {
-        none,
         node: Index,
+        token: TokenIndex,
+        node_and_token: struct { Index, TokenIndex },
+        node_and_node: struct { Index, Index },
         // opt_node: OptionalIndex,
     };
 };
@@ -217,10 +235,12 @@ pub const Error = struct {
     pub const Tag = enum {
         missing_newline_after_string_comment,
         expected_token,
+        expected_expr,
         unexpected_tag_class_body,
         invalid_annotation,
         expected_prefix_expr,
         invalid_prefix_operand,
+        hit_banned_prec,
     };
 };
 
