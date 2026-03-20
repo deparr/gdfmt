@@ -258,6 +258,24 @@ fn parseExprPrecedence(self: *Parse, min_prec: i32) Error!?Node.Index {
         }
     }
 
+    // node is the consequent
+    if (self.tokenTag(self.tok_i) == .@"if") {
+        // now parsing a ternary
+        const if_tok = self.nextToken();
+        const cond_node = try self.expectExpr();
+        _ = try self.expectToken(.@"else");
+        const alt_node = try self.expectExpr();
+        const extra = try self.addExtra(Node.Data.If{ .if_expr = node, .else_expr = alt_node });
+        node = try self.addNode(.{
+            .tag = .ternary,
+            .main_token = if_tok,
+            .data = .{ .node_and_extra = .{
+                cond_node,
+                extra
+            } },
+        });
+    }
+
     return node;
 }
 
@@ -312,7 +330,8 @@ fn parsePrimaryExpr(self: *Parse) Error!?Node.Index {
             if (tok[0] == '"' or tok[0] == '\'') {
                 tag = .string_literal;
 
-            // special case some builtin literals as idents
+                // special case some builtin literals as idents
+                // these are literals so token.isIdentifier() doesn't catch them
             } else if (strcmp(tok, "true") or strcmp(tok, "false") or strcmp(tok, "null")) {
                 tag = .identifier;
             } else {
@@ -365,6 +384,27 @@ fn addNode(p: *Parse, elem: Ast.Node) Allocator.Error!Node.Index {
     try p.nodes.append(p.gpa, elem);
     return result;
 }
+
+fn addExtra(self: *Parse, extra: anytype) Allocator.Error!ExtraIndex {
+    const fields = std.meta.fields(@TypeOf(extra));
+    try self.extra_data.ensureUnusedCapacity(self.gpa, fields.len);
+    const result: ExtraIndex = @enumFromInt(self.extra_data.items.len);
+    inline for (fields) |field| {
+        const data: u32 = switch (field.type) {
+            Node.Index,
+            // Node.OptionalIndex,
+            // OptionalTokenIndex,
+            ExtraIndex,
+            => @intFromEnum(@field(extra, field.name)),
+            TokenIndex,
+            => @field(extra, field.name),
+            else => @compileError("unexpected field type"),
+        };
+        self.extra_data.appendAssumeCapacity(data);
+    }
+    return result;
+}
+
 
 fn nextToken(self: *Parse) TokenIndex {
     const result = self.tok_i;

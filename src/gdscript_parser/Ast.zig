@@ -16,7 +16,9 @@ errors: []const Error,
 
 pub const TokenIndex = u32;
 pub const ByteOffset = u32;
-
+pub const ExtraIndex = enum(u32) {
+    _,
+};
 
 // TODO includes the token end because I need to be able to get token slices
 // during parsing (eg annotations). I would just retokenize single tokens on
@@ -80,7 +82,7 @@ pub fn parse(gpa: Allocator, source: [:0]const u8) Allocator.Error!Ast {
     const estimated_node_count = (tokens.len + 2) / 2;
     try parser.nodes.ensureTotalCapacity(gpa, estimated_node_count);
 
-    parser.parseRoot() catch |err| switch(err) {
+    parser.parseRoot() catch |err| switch (err) {
         error.ParseError => {},
         error.OutOfMemory => return error.OutOfMemory,
     };
@@ -150,6 +152,7 @@ pub const Node = struct {
         in,
         negation,
         numeric_identity, // todo ??????
+        ternary,
 
         string_literal,
         number_literal,
@@ -194,17 +197,21 @@ pub const Node = struct {
         doc_comment,
     };
 
-    pub fn format(self: Node, writer: *std.Io.Writer,) std.Io.Writer.Error!void {
-        try writer.print("({t}", .{ self.tag });
+    pub fn format(
+        self: Node,
+        writer: *std.Io.Writer,
+    ) std.Io.Writer.Error!void {
+        try writer.print("({t}", .{self.tag});
         switch (self.data) {
             .node => |n| {
                 if (n != .root) {
-                    try writer.print(" :node ({d})", .{ n });
+                    try writer.print(" :node ({d})", .{n});
                 }
             },
-            .token => |t| try writer.print(" :token ({d})", .{ t }),
-            .node_and_token => |nt| try writer.print(" :node ({d}) :token ({d})", .{ nt.@"0", nt.@"1"}),
+            .token => |t| try writer.print(" :token ({d})", .{t}),
+            .node_and_token => |nt| try writer.print(" :node ({d}) :token ({d})", .{ nt.@"0", nt.@"1" }),
             .node_and_node => |nn| try writer.print(" :node ({d}) :node ({d})", .{ nn.@"0", nn.@"1" }),
+            .node_and_extra => |ne| try writer.print(" :node ({d}) :extra ())", .{ne.@"0"}),
         }
         try writer.writeByte(')');
     }
@@ -220,8 +227,20 @@ pub const Node = struct {
         token: TokenIndex,
         node_and_token: struct { Index, TokenIndex },
         node_and_node: struct { Index, Index },
+        node_and_extra: struct { Index, ExtraIndex },
+        // extra_range: SubRange,
         // opt_node: OptionalIndex,
+
+        pub const If = struct {
+            if_expr: Index,
+            else_expr: Index,
+        };
     };
+};
+
+pub const SubRange = struct {
+    start: ExtraIndex,
+    end: ExtraIndex,
 };
 
 pub const Error = struct {
@@ -245,29 +264,25 @@ pub const Error = struct {
 };
 
 pub const AnnotationTarget = enum(u32) {
-        none = 0,
-        script = 1,
-        class = 1 << 2,
-        variable = 1 << 3,
-        constant = 1 << 4,
-        signal = 1 << 5,
-        function = 1 << 6,
-        statement = 1 << 7,
-        standalone = 1 << 8,
+    none = 0,
+    script = 1,
+    class = 1 << 2,
+    variable = 1 << 3,
+    constant = 1 << 4,
+    signal = 1 << 5,
+    function = 1 << 6,
+    statement = 1 << 7,
+    standalone = 1 << 8,
 
-        pub const class_level = @intFromEnum(AnnotationTarget.class)
-            | @intFromEnum(AnnotationTarget.variable)
-            | @intFromEnum(AnnotationTarget.constant)
-            | @intFromEnum(AnnotationTarget.signal)
-            | @intFromEnum(AnnotationTarget.function);
+    pub const class_level = @intFromEnum(AnnotationTarget.class) | @intFromEnum(AnnotationTarget.variable) | @intFromEnum(AnnotationTarget.constant) | @intFromEnum(AnnotationTarget.signal) | @intFromEnum(AnnotationTarget.function);
 
-        pub fn group(members: []const AnnotationTarget) u32 {
-            var res: u32 = 0;
-            for (members) |m| {
-                res |= @intFromEnum(m);
-            }
-            return res;
+    pub fn group(members: []const AnnotationTarget) u32 {
+        var res: u32 = 0;
+        for (members) |m| {
+            res |= @intFromEnum(m);
         }
+        return res;
+    }
 };
 
 pub const validAnnotations = std.StaticStringMap(AnnotationTarget).initComptime(.{
@@ -283,4 +298,3 @@ pub const validAnnotations = std.StaticStringMap(AnnotationTarget).initComptime(
 
     .{ "onready", .variable },
 });
-
