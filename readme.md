@@ -1,6 +1,6 @@
 # gdfmt
 
-A formatter for [Godot](https://github.com/godotengine/godot) gdscript.
+An *experimental* parser and formatter for [Godot](https://github.com/godotengine/godot) gdscript.
 
 ### building
 
